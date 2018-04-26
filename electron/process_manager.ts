@@ -290,18 +290,17 @@ function configureRouting(tun2socksVirtualRouterIp: string, proxyServerIp: strin
 // TODO: parameter for current proxy, so route can be removed
 function resetRouting() {
   if (!previousGateway) {
-    throw new Error('disconnecting but i do not know the previous gateway');
+    throw new Error('i cannot reset the default gateway because i do not know the previous gateway');
   }
 
   try {
     const out = execFileSync(
         pathToEmbeddedExe('setsystemproxy'), ['off', previousGateway, '123.123.123.123'],
         {timeout: 5000});
-    console.log(`setsystemproxy stdout:\n===\n${out}===`);
+    console.log(`setsystemproxy:\n===\n${out}===`);
   } catch (e) {
-    console.log(`setsystemproxy stdout: ${e.stdout.toString()}`);
-    console.log(`setsystemproxy stderr: ${e.stderr.toString()}`);
-    throw new Error(`could not reset routing: ${e.stderr}`);
+    console.log(`setsystemproxy failed:\n===\n${e.stdout.toString()}===`);
+    throw new Error(`could not reset routing`);
   }
 }
 
