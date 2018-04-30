@@ -659,7 +659,7 @@ int BDatagram_GetLocalPort (BDatagram *o, uint16_t *local_port)
         *local_port = addr.ipv6.port;
         return 1;
     }
-    BLog(BLOG_ERROR, "Unknown address type from getsockname: %d", address.type);
+    BLog(BLOG_ERROR, "Unknown address type from getsockname: %d", addr.type);
     return 0;
 }
 

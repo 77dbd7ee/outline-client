@@ -36,9 +36,6 @@
 #include <string.h>
 #include <limits.h>
 
-// PSIPHON
-#include "jni.h"
-
 #include <misc/version.h>
 #include <misc/loggers_string.h>
 #include <misc/loglevel.h>
@@ -58,7 +55,9 @@
 #include <misc/concat_strings.h>
 #include <structure/LinkedList1.h>
 #include <base/BLog.h>
+
 #include <system/BReactor.h>
+
 #include <system/BSignal.h>
 #include <system/BAddr.h>
 #include <system/BNetwork.h>
@@ -71,7 +70,13 @@
 #include <lwip/tcp.h>
 #include <tun2socks/SocksUdpGwClient.h>
 #include <socks_udp_client/SocksUdpClient.h>
+
+#ifdef BADVPN_USE_WINAPI
+#include <ws2tcpip.h>
+#else
 #include <sys/socket.h>
+#endif
+
 #include <stringmap/BStringMap.h>
 
 #ifndef BADVPN_USE_WINAPI
@@ -283,7 +288,8 @@ static void udp_send_packet_to_device (void *unused, BAddr local_addr, BAddr rem
 typedef struct {
     int sockfd;  // UDP socket file descriptor
     uint8_t *buffer;  // Data buffer
-    BFileDescriptor bfd;  // File descriptor object for BReactor
+    // TREV: doesn't exist on windows!
+    // BFileDescriptor bfd;  // File descriptor object for BReactor
     BStringMap map;  // Maps DNS id request to source IP address
 } UdpPcb;
 
@@ -364,7 +370,7 @@ static int udp_init(UdpPcb* udp_pcb) {
     local_addr.sin_port = htons(0);
     if (bind(sockfd, (struct sockaddr *)&local_addr, sizeof(local_addr)) < 0) {
         BLog(BLOG_ERROR, "udp_init: failed to bind socket");
-        close(sockfd);
+        // close(sockfd);
         return 0;
     }
     char udp_relay_addr_str[BADDR_MAX_PRINT_LEN];
@@ -380,18 +386,21 @@ static int udp_init(UdpPcb* udp_pcb) {
     remote_addr.sin_port = udp_relay_addr.ipv4.port;
     if (connect(sockfd, (struct sockaddr *)&remote_addr, sizeof(remote_addr)) < 0) {
         BLog(BLOG_ERROR, "udp_init: failed to connect to remote");
-        close(sockfd);
+        // close(sockfd);
         return 0;
     }
-    // Monitor socket for read
-    BFileDescriptor_Init(&udp_pcb->bfd, sockfd,
-                         (BFileDescriptor_handler)udp_fd_handler, udp_pcb);
-    if (!BReactor_AddFileDescriptor(&ss, &udp_pcb->bfd)) {
-        BLog(BLOG_ERROR, "udp_init: failed to add fd to event loop");
-        close(sockfd);
-        return 0;
-    }
-    BReactor_SetFileDescriptorEvents(&ss, &udp_pcb->bfd, BREACTOR_READ);
+
+    // TREV: no BFileDescriptor_Init on windows!
+
+    // // Monitor socket for read
+    // BFileDescriptor_Init(&udp_pcb->bfd, sockfd,
+    //                      (BFileDescriptor_handler)udp_fd_handler, udp_pcb);
+    // if (!BReactor_AddFileDescriptor(&ss, &udp_pcb->bfd)) {
+    //     BLog(BLOG_ERROR, "udp_init: failed to add fd to event loop");
+    //     close(sockfd);
+    //     return 0;
+    // }
+    // BReactor_SetFileDescriptorEvents(&ss, &udp_pcb->bfd, BREACTOR_READ);
 
     udp_pcb->sockfd = sockfd;
     BStringMap_Init(&udp_pcb->map);
@@ -418,10 +427,13 @@ static int udp_recv(int sockfd, uint8_t* buffer, int buffer_len) {
 static void udp_free(UdpPcb* udp_pcb) {
     if (udp_pcb->buffer)
         free(udp_pcb->buffer);
-    if (udp_pcb->sockfd) {
-        BReactor_RemoveFileDescriptor(&ss, &udp_pcb->bfd);
-        close(udp_pcb->sockfd);
-    }
+
+    // TREV: no BFileDescriptor on windows!
+        
+    // if (udp_pcb->sockfd) {
+    //     BReactor_RemoveFileDescriptor(&ss, &udp_pcb->bfd);
+    //     close(udp_pcb->sockfd);
+    // }
 
     BStringMap_Free(&udp_pcb->map);
 }
@@ -549,7 +561,8 @@ int main (int argc, char **argv)
     if (!parse_arguments(argc, argv)) {
         fprintf(stderr, "Failed to parse arguments\n");
         print_help(argv[0]);
-        goto fail0;
+        // goto fail0;
+        return 1;
     }
 
     // handle --help and --version
@@ -757,22 +770,22 @@ void run()
         netif_remove(&netif);
     }
 
-    // ==== PSIPHON ====
-    // The existing tun2socks cleanup sometimes leaves some TCP connections
-    // in the TIME_WAIT state. With regular tun2socks, these will be cleaned up
-    // by process termination. Since we re-init tun2socks within one process,
-    // and tcp_bind_to_netif requires no TCP connections bound to the network
-    // interface, we need to explicitly clean these up. Since we're also closing
-    // both sources of tunneled packets (VPN fd and SOCKS sockets), there should
-    // be no need to keep these TCP connections in TIME_WAIT between tun2socks
-    // invocations.
-    // After further testing, we found at least one TCP connection left in the
-    // active list (with state SYN_RCVD). Now we're aborting the active list
-    // as well, and the bound list for good measure.
-    tcp_remove(tcp_bound_pcbs);
-    tcp_remove(tcp_active_pcbs);
-    tcp_remove(tcp_tw_pcbs);
-    // ==== PSIPHON ====
+    // // ==== PSIPHON ====
+    // // The existing tun2socks cleanup sometimes leaves some TCP connections
+    // // in the TIME_WAIT state. With regular tun2socks, these will be cleaned up
+    // // by process termination. Since we re-init tun2socks within one process,
+    // // and tcp_bind_to_netif requires no TCP connections bound to the network
+    // // interface, we need to explicitly clean these up. Since we're also closing
+    // // both sources of tunneled packets (VPN fd and SOCKS sockets), there should
+    // // be no need to keep these TCP connections in TIME_WAIT between tun2socks
+    // // invocations.
+    // // After further testing, we found at least one TCP connection left in the
+    // // active list (with state SYN_RCVD). Now we're aborting the active list
+    // // as well, and the bound list for good measure.
+    // tcp_remove(tcp_bound_pcbs);
+    // tcp_remove(tcp_active_pcbs);
+    // tcp_remove(tcp_tw_pcbs);
+    // // ==== PSIPHON ====
 
     // ==== OUTLINE ====
     udp_free(&udp_pcb);
@@ -1337,20 +1350,20 @@ void tcp_timer_handler (void *unused)
 {
     ASSERT(!quitting)
 
-    // ==== PSIPHON ====
+    // // ==== PSIPHON ====
 
-    // Check if the terminate flag has been set by Psiphon.
+    // // Check if the terminate flag has been set by Psiphon.
 
-    // TODO: instead of piggybacking on this timer,
-    // we could perhaps write to a pipe hooked into
-    // the BReactor event loop, which would eliminate
-    // any shutdown delay due to waiting for this timer.
+    // // TODO: instead of piggybacking on this timer,
+    // // we could perhaps write to a pipe hooked into
+    // // the BReactor event loop, which would eliminate
+    // // any shutdown delay due to waiting for this timer.
 
-    if (__sync_bool_compare_and_swap(&g_terminate, 1, 1)) {
-        BLog(BLOG_INFO, "g_terminate is set");
-        terminate();
-        return;
-    }
+    // if (__sync_bool_compare_and_swap(&g_terminate, 1, 1)) {
+    //     BLog(BLOG_INFO, "g_terminate is set");
+    //     terminate();
+    //     return;
+    // }
 
     // ==== PSIPHON ====
 

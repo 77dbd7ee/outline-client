@@ -239,6 +239,14 @@ function startTun2socks(onDisconnected: () => void): Promise<void> {
         onDisconnected();
       });
 
+      tun2socks.stdout.on('data', (data) => {
+        console.log(`stdout: ${data}`);
+      });
+      
+      tun2socks.stderr.on('data', (data) => {
+        console.log(`stderr: ${data}`);
+      });
+      
       resolve();
     } catch (e) {
       reject(e);

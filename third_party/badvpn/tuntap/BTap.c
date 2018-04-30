@@ -269,9 +269,9 @@ int BTap_Init2 (BTap *o, BReactor *reactor, struct BTap_init_data init_data, BTa
     
     // get MTU
     
-    ULONG umtu;
-    
-    if (!DeviceIoControl(o->device, TAP_IOCTL_GET_MTU, NULL, 0, &umtu, sizeof(umtu), &len, NULL)) {
+    // TREV: these two liunes changed
+    ULONG umtu = 0;
+    if (!DeviceIoControl(o->device, TAP_IOCTL_GET_MTU, &umtu, sizeof(umtu), &umtu, sizeof(umtu), &len, NULL)) {
         BLog(BLOG_ERROR, "DeviceIoControl(TAP_IOCTL_GET_MTU) failed");
         goto fail2;
     }
@@ -477,53 +477,7 @@ int BTap_InitWithFD (BTap *o, BReactor *reactor, int fd, int mtu, BTap_handler_e
 {
     ASSERT(tun == 0 || tun == 1)
 
-    #ifndef BADVPN_LINUX
-
     return 0;
-
-    #endif
-
-    o->reactor = reactor;
-    o->handler_error = handler_error;
-    o->handler_error_user = handler_error_user;
-    o->frame_mtu = mtu;
-    o->fd = fd;
-    // ===== OUTLINE =====
-    // Do not take ownership or close the TUN file descriptor
-    o->close_fd = 0;
-    // ===== /OUTLINE =====
-
-    // TODO: use BTap_Init2? Still some different behavior (we don't want the fcntl block; we do want close to be called)
-
-    // The following is identical to BTap_Init...
-
-    // init file descriptor object
-    BFileDescriptor_Init(&o->bfd, o->fd, (BFileDescriptor_handler)fd_handler, o);
-    if (!BReactor_AddFileDescriptor(o->reactor, &o->bfd)) {
-        BLog(BLOG_ERROR, "BReactor_AddFileDescriptor failed");
-        goto fail1;
-    }
-    o->poll_events = 0;
-
-    goto success;
-
-fail1:
-    if (o->close_fd) {
-        ASSERT_FORCE(close(o->fd) == 0)
-    }
-fail0:
-    return 0;
-
-success:
-    // init output
-    PacketRecvInterface_Init(&o->output, o->frame_mtu, (PacketRecvInterface_handler_recv)output_handler_recv, o, BReactor_PendingGroup(o->reactor));
-
-    // set no output packet
-    o->output_packet = NULL;
-
-    DebugError_Init(&o->d_err, BReactor_PendingGroup(o->reactor));
-    DebugObject_Init(&o->d_obj);
-    return 1;
 }
 
 // ==== PSIPHON ====
