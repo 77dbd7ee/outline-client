@@ -42,11 +42,12 @@ let tun2socks: ChildProcess|undefined;
 const PROXY_IP = '127.0.0.1';
 const SS_LOCAL_PORT = 1081;
 
+const TUN2SOCKS_TAP_DEVICE_NAME = 'outline-tap0';
+
 // TODO: read these from the system!
-const TUN2SOCKS_TUN_DEVICE_NAME = 'tun0';
-const TUN2SOCKS_TUN_DEVICE_IP = '192.168.7.2';
+const TUN2SOCKS_TAP_DEVICE_IP = '192.168.7.2';
 const TUN2SOCKS_VIRTUAL_ROUTER_IP = '192.168.7.1';
-const TUN2SOCKS_TUN_DEVICE_NETWORK = '192.168.7.0';
+const TUN2SOCKS_TAP_DEVICE_NETWORK = '192.168.7.0';
 const TUN2SOCKS_VIRTUAL_ROUTER_NETMASK = '255.255.255.0';
 
 let previousGateway:string;
@@ -221,8 +222,8 @@ function startTun2socks(onDisconnected: () => void): Promise<void> {
     const args: string[] = [];
     args.push(
         '--tundev',
-        `tap0901:${TUN2SOCKS_TUN_DEVICE_NAME}:${TUN2SOCKS_TUN_DEVICE_IP}:${
-            TUN2SOCKS_TUN_DEVICE_NETWORK}:${TUN2SOCKS_VIRTUAL_ROUTER_NETMASK}`);
+        `tap0901:${TUN2SOCKS_TAP_DEVICE_NAME}:${TUN2SOCKS_TAP_DEVICE_IP}:${
+            TUN2SOCKS_TAP_DEVICE_NETWORK}:${TUN2SOCKS_VIRTUAL_ROUTER_NETMASK}`);
     args.push('--netif-ipaddr', TUN2SOCKS_VIRTUAL_ROUTER_IP);
     args.push('--netif-netmask', TUN2SOCKS_VIRTUAL_ROUTER_NETMASK);
     args.push('--socks-server-addr', `${PROXY_IP}:${SS_LOCAL_PORT}`);
