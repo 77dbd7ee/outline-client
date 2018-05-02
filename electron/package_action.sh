@@ -32,6 +32,7 @@ electron-builder \
   --publish=never \
   --win nsis \
   --config.win.icon=icons/win/icon.ico \
+  --config.win.requestedExecutionLevel=requireAdministrator \
   --config.nsis.artifactName='Outline-Client.${ext}' \
   --config.nsis.perMachine=true \
   --config.nsis.oneClick=false \
