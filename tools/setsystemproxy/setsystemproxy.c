@@ -25,7 +25,7 @@
 #define FREE(x) HeapFree(GetProcessHeap(), 0, (x))
 
 void usage(const char* path) {
-  printf("usage: on|off <ip of new gateway> <ip of shadowsocks server>\n");
+  printf("usage: on <tun2socks> <proxy>|off <tun2socks> <proxy> <previous gateway>\n");
   exit(1);
 }
 
@@ -80,29 +80,58 @@ PMIB_IPFORWARDROW createRowForSingleIp() {
   return row;
 }
 
-// TODO handle host names
+void createRoute(PMIB_IPFORWARDROW row) {
+  DWORD dwStatus = CreateIpForwardEntry(row);
+  if (dwStatus != ERROR_SUCCESS) {
+    printf("could not delete route: %d\n", dwStatus);
+    exit(1);
+  }
+}
+
+void deleteRoute(PMIB_IPFORWARDROW row) {
+  DWORD dwStatus = DeleteIpForwardEntry(row);
+  if (dwStatus != ERROR_SUCCESS) {
+    printf("could not delete route: %d\n", dwStatus);
+    exit(1);
+  }
+}
+
+// TODO: handle host names
 int main(int argc, char* argv[]) {
-  if (argc < 4) {
+  if (argc < 2) {
     usage(argv[0]);
   }
 
   int connecting = strcmp(argv[1], "on") == 0;
 
+  if (argc != (connecting ? 4 : 5)) {
+    usage(argv[0]);
+  }
+
   DWORD NewGateway = INADDR_NONE;
   NewGateway = inet_addr(argv[2]);
   if (NewGateway == INADDR_NONE) {
-    printf("could not parse gateway IP\n");
+    printf("could not parse tun2socks virtual router IP\n");
     return 1;
   }
 
   DWORD proxyServerIp = INADDR_NONE;
   proxyServerIp = inet_addr(argv[3]);
   if (proxyServerIp == INADDR_NONE) {
-    printf("could not parse proxy IP\n");
+    printf("could not parse proxy server IP\n");
     return 1;
   }
 
-  // TODO: remove this once our tun2socks supports UDP
+  DWORD systemGatewayIp = INADDR_NONE;
+  if (!connecting) {
+    systemGatewayIp = inet_addr(argv[4]);
+    if (systemGatewayIp == INADDR_NONE) {
+      printf("could not parse system gateway IP\n");
+      return 1;
+    }
+  }
+
+  // TODO: remove this once tun2socks supports UDP
   DWORD dnsIp = inet_addr("8.8.8.8");
 
   // Fetch the system's routing table.
@@ -130,155 +159,157 @@ int main(int argc, char* argv[]) {
 
   // default gateway.
   PMIB_IPFORWARDROW pRow = NULL;
+  // tun2socks gateway.
+  PMIB_IPFORWARDROW gwRow = NULL;
   // proxy server.
   PMIB_IPFORWARDROW proxyRow = NULL;
   // DNS server.
   PMIB_IPFORWARDROW dnsRow = NULL;
 
-  int lowestIm = 1000;
-
-  DWORD dwStatus = 0;
+  // If tun2socks crashes, a kind of "shadow" route is left behind
+  // which is invisible until tun2socks is *restarted*.
+  // Because of this, if we find a gateway via the tun2socks device
+  // we leave it alone.
 
   for (int i = 0; i < pIpForwardTable->dwNumEntries; i++) {
-    if (pIpForwardTable->table[i].dwForwardDest == 0) {
-      // default gateway.
-      // there can be many of these on the system.
-      // assume the one with lowest interface metric is the system default.
-      int ii = getBest(pIpForwardTable->table[i].dwForwardNextHop);
-      int im = getInterfaceMetric(ii);
-      if (im < lowestIm) {
-        // new candidate for real system gateway.
-        pRow = &(pIpForwardTable->table[i]);
-        lowestIm = im;
-      }
+    PMIB_IPFORWARDROW row = &(pIpForwardTable->table[i]);
 
-      // delete the gateway.
-      dwStatus = DeleteIpForwardEntry(&(pIpForwardTable->table[i]));
-      if (dwStatus != ERROR_SUCCESS) {
-        printf("could not delete gateway\n");
-        exit(1);
+    if (row->dwForwardDest == 0) {
+      // Gateway.
+      if (row->dwForwardNextHop == NewGateway) {
+        gwRow = row;
+      } else if (row->dwForwardNextHop == systemGatewayIp) {
+        printf("the previous gateway already exists\n");
+        pRow = row;
+      } else {
+        if (pRow) {
+          printf("cannot handle multiple gateways\n");
+          exit(1);
+        }
+        pRow = row;
       }
-      printf("deleted gateway\n");
-    } else if (pIpForwardTable->table[i].dwForwardDest == proxyServerIp) {
+    } else if (row->dwForwardDest == proxyServerIp) {
       if (proxyRow) {
         printf("found multiple routes to proxy server, cannot handle\n");
         exit(1);
       }
-      printf("found route to proxy server, can modify\n");
-      proxyRow = &(pIpForwardTable->table[i]);
-    } else if (pIpForwardTable->table[i].dwForwardDest == dnsIp) {
+      proxyRow = row;
+    } else if (row->dwForwardDest == dnsIp) {
       if (dnsRow) {
         printf("found multiple routes to DNS server, cannot handle\n");
         exit(1);
       }
-      printf("found route to DNS server, can modify\n");
-      dnsRow = &(pIpForwardTable->table[i]);
+      dnsRow = row;
     }
-  }
-
-  if (!pRow) {
-    printf("no gateways on system - are you connected to the internet?\n");
-    exit(1);
-  }
-
-  // remember the old gateway: traffic to the proxy and DNS servers will
-  // still route via it.
-  DWORD oldGateway = pRow->dwForwardNextHop;
-
-  // which interfaces are the old and new gateway on?
-  // NOTE: for the new gateway, tun2socks must be active before
-  // getBest will work!
-  int oldGatewayInterfaceIndex = getBest(oldGateway);
-  int newGatewayInterfaceIndex = getBest(NewGateway);
-
-  printf("old gateway interface index: %d\n", oldGatewayInterfaceIndex);
-  printf("new gateway interface index: %d\n", newGatewayInterfaceIndex);
-
-  // print the old gateway.
-  char oldGatewayIp[128];
-  struct in_addr IpAddr;
-  IpAddr.S_un.S_addr = (u_long)pRow->dwForwardNextHop;
-  strcpy(oldGatewayIp, inet_ntoa(IpAddr));
-  printf("current gateway: %s\n", oldGatewayIp);
-
-  DWORD oldGatewayInterfaceMetric = getInterfaceMetric(oldGatewayInterfaceIndex);
-  DWORD newGatewayInterfaceMetric = getInterfaceMetric(newGatewayInterfaceIndex);
-
-  printf("old gateway interface metric: %d\n", oldGatewayInterfaceMetric);
-  printf("new gateway interface metric: %d\n", newGatewayInterfaceMetric);
-
-  PMIB_IPFORWARDROW gwRow = createRowForSingleIp();
-  gwRow->dwForwardDest = 0;
-  gwRow->dwForwardMask = 0;
-  gwRow->dwForwardPolicy = 0;
-  gwRow->dwForwardNextHop = NewGateway;
-  gwRow->dwForwardIfIndex = newGatewayInterfaceIndex;
-  gwRow->dwForwardType = 4;  /* the next hop is not the final dest */
-  gwRow->dwForwardProto = 3; /* PROTO_IP_NETMGMT */
-  gwRow->dwForwardAge = 0;
-  gwRow->dwForwardNextHopAS = 0;
-  // TODO: should this be computed in relation to the old gateway's interface metric?
-  gwRow->dwForwardMetric1 = newGatewayInterfaceMetric;
-  gwRow->dwForwardMetric2 = 0;
-  gwRow->dwForwardMetric3 = 0;
-  gwRow->dwForwardMetric4 = 0;
-  gwRow->dwForwardMetric5 = 0;
-
-  dwStatus = CreateIpForwardEntry(gwRow);
-  if (dwStatus != NO_ERROR) {
-    printf("could not create new gateway: %d\n", dwStatus);
-    exit(1);
-  }
-  printf("set new gateway\n");
-
-  // Add a route to the proxy server.
-  if (proxyRow) {
-    dwStatus = DeleteIpForwardEntry(proxyRow);
-    if (dwStatus != ERROR_SUCCESS) {
-      printf("could not delete current route to proxy server\n");
-      exit(1);
-    }
-    printf("deleted old route to proxy server\n");
   }
 
   if (connecting) {
+    if (!pRow) {
+      printf("found no other gateway - cannot handle this\n");
+      exit(1);
+    }
+
+    // Route via the tun2socks virtual router.
+    // Ideally, we would *modify* the gateway rather than adding one and deleting
+    // the old. That way, we could be almost certain of not leaving the user's
+    // computer in an unuseable state. However, that does *not* work - as the
+    // documentation for SetIpForwardEntry explicitly states:
+    //   xxx
+    //
+    // Instead, we first add the new gateway before deleting the old.
+    //
+    // And what about just keeping the old one around? There are enough posts and
+    // questions on the web around the topic of multiple gateways to suggest
+    // this is dangerous thinking: and in Outline's case, the TAP interface seems to
+    // always have a higher priority than any existing ethernet device - messing
+    // with that is probably not going to end well.
+    if (!gwRow) {
+      // NOTE: tun2socks *must be active* before this returns the correct result.
+      int newGatewayInterfaceIndex = getBest(NewGateway);
+
+      // This turns out to be a crucial, undocumented step.
+      // TODO: more comments!
+      DWORD newGatewayInterfaceMetric = getInterfaceMetric(newGatewayInterfaceIndex);
+
+      PMIB_IPFORWARDROW gwRow = createRowForSingleIp();
+      gwRow->dwForwardMask = 0;
+      gwRow->dwForwardNextHop = NewGateway;
+      gwRow->dwForwardIfIndex = newGatewayInterfaceIndex;
+      gwRow->dwForwardMetric1 = newGatewayInterfaceMetric;
+
+      createRoute(gwRow);
+      printf("added new gateway\n");
+    }
+
+    // Delete the previous gateway and print its IP so Outline can restore it.
+    DWORD oldGateway = pRow->dwForwardNextHop;
+    char oldGatewayIp[128];
+    struct in_addr IpAddr;
+    IpAddr.S_un.S_addr = (u_long)pRow->dwForwardNextHop;
+    strcpy(oldGatewayIp, inet_ntoa(IpAddr));
+    printf("current gateway: %s\n", oldGatewayIp);
+
+    deleteRoute(pRow);
+    printf("removed old gateway\n");
+
+    int oldGatewayInterfaceIndex = getBest(oldGateway);
+    DWORD oldGatewayInterfaceMetric = getInterfaceMetric(oldGatewayInterfaceIndex);
+
+    // Add a route to the proxy server.
+    if (proxyRow) {
+      deleteRoute(proxyRow);
+      printf("removed old route to proxy server\n");
+    }
     proxyRow = createRowForSingleIp();
     proxyRow->dwForwardDest = proxyServerIp;
     proxyRow->dwForwardNextHop = oldGateway;
-    proxyRow->dwForwardMetric1 = pRow->dwForwardMetric1;
+    proxyRow->dwForwardMetric1 = oldGatewayInterfaceMetric;
     proxyRow->dwForwardIfIndex = oldGatewayInterfaceIndex;
+    createRoute(proxyRow);
+    printf("added route to proxy server\n");
 
-    dwStatus = CreateIpForwardEntry(proxyRow);
-    if (dwStatus != NO_ERROR) {
-      printf("could not add route to proxy server: %d\n", dwStatus);
-      exit(1);
+    // Add a route to the DNS server.
+    if (dnsRow) {
+      deleteRoute(dnsRow);
+      printf("deleted old route to DNS server\n");
     }
-    printf("added new route to proxy server\n");
-  }
-
-  // Add a route to the DNS server.
-  if (dnsRow) {
-    dwStatus = DeleteIpForwardEntry(dnsRow);
-    if (dwStatus != ERROR_SUCCESS) {
-      printf("Could not delete old route to DNS server\n");
-      exit(1);
-    }
-    printf("deleted old route to DNS server\n");
-  }
-
-  if (connecting) {
     dnsRow = createRowForSingleIp();
     dnsRow->dwForwardDest = dnsIp;
     dnsRow->dwForwardNextHop = oldGateway;
-    dnsRow->dwForwardMetric1 = pRow->dwForwardMetric1;
+    dnsRow->dwForwardMetric1 = oldGatewayInterfaceMetric;
     dnsRow->dwForwardIfIndex = oldGatewayInterfaceIndex;
-
-    dwStatus = CreateIpForwardEntry(dnsRow);
-    if (dwStatus != NO_ERROR) {
-      printf("could not add route to DNS server: %d\n", dwStatus);
-      exit(1);
-    }
+    createRoute(dnsRow);
     printf("added new route to DNS server\n");
+  } else {
+    // TODO: When we aren't told the previous gateway, make a guess.
+    if (gwRow) {
+      deleteRoute(gwRow);
+      printf("removed tun2socks gateway\n");
+    }
+
+    if (!pRow) {
+      int oldGatewayInterfaceIndex = getBest(systemGatewayIp);
+      DWORD oldGatewayInterfaceMetric = getInterfaceMetric(oldGatewayInterfaceIndex);
+
+      PMIB_IPFORWARDROW gwRow = createRowForSingleIp();
+      gwRow->dwForwardMask = 0;
+      gwRow->dwForwardNextHop = systemGatewayIp;
+      gwRow->dwForwardIfIndex = oldGatewayInterfaceIndex;
+      gwRow->dwForwardMetric1 = oldGatewayInterfaceMetric;
+
+      createRoute(gwRow);
+      printf("restored gateway\n");
+    }
+
+    if (proxyRow) {
+      deleteRoute(proxyRow);
+      printf("removed route to proxy server\n");
+    }
+
+    if (dnsRow) {
+      deleteRoute(dnsRow);
+      printf("removed route to DNS server\n");
+    }
   }
 
   exit(0);
