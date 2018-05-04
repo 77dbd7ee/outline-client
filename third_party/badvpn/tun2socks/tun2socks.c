@@ -1089,9 +1089,10 @@ int parse_arguments (int argc, char *argv[])
             }
             i++;
         }
-        else if (!strcmp(arg, "--transparent-dns")) {
-            options.transparent_dns = 1;
-        }
+        // // TREV: oh! we don't want this right?
+        // else if (!strcmp(arg, "--transparent-dns")) {
+        //     options.transparent_dns = 1;
+        // }
         else {
             fprintf(stderr, "unknown option: %s\n", arg);
             return 0;
@@ -1221,6 +1222,9 @@ int process_arguments (void)
             return 0;
         }
     }
+
+    // TREV: total hack for outline where udp relay == socks server
+    udp_relay_addr = socks_server_addr;
 
     return 1;
 }

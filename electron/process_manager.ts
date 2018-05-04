@@ -138,12 +138,13 @@ export function isServerReachable(config: cordova.plugins.outline.ServerConfig) 
 function startLocalShadowsocksProxy(
   serverConfig: cordova.plugins.outline.ServerConfig, onDisconnected: () => void) {
   return new Promise((resolve, reject) => {
-    // ss-local -s x.x.x.x -p 65336 -k mypassword -m aes-128-cfb -l 1081
+    // ss-local -s x.x.x.x -p 65336 -k mypassword -m aes-128-cfb -l 1081 -u
     const ssLocalArgs: string[] = ['-l', SS_LOCAL_PORT.toString()];
     ssLocalArgs.push('-s', serverConfig.host || '');
     ssLocalArgs.push('-p', '' + serverConfig.port);
     ssLocalArgs.push('-k', serverConfig.password || '');
     ssLocalArgs.push('-m', serverConfig.method || '');
+    ssLocalArgs.push('-u');
 
     try {
       ssLocal = execFile(pathToEmbeddedExe('ss-local'), ssLocalArgs);
@@ -215,9 +216,8 @@ function validateServerCredentials() {
 function startTun2socks(onDisconnected: () => void): Promise<void> {
   return new Promise((resolve, reject) => {
     // ./badvpn-tun2socks.exe \
-    //   --tundev "tap0901:tun0:192.168.7.2:192.168.1.0:255.255.255.0" \
-    //   --netif-ipaddr 192.168.7.1 \
-    //   --netif-netmask 255.255.255.0 \
+    //   --tundev "tap0901:outline-tap0:192.168.7.2:192.168.1.0:255.255.255.0" \
+    //   --netif-ipaddr 192.168.7.1 --netif-netmask 255.255.255.0 \
     //   --socks-server-addr 127.0.0.1:1080
     const args: string[] = [];
     args.push(
@@ -240,13 +240,12 @@ function startTun2socks(onDisconnected: () => void): Promise<void> {
         onDisconnected();
       });
 
-      // tun2socks.stdout.on('data', (data) => {
-      //   console.log(`stdout: ${data}`);
-      // });
-
-      // tun2socks.stderr.on('data', (data) => {
-      //   console.log(`stderr: ${data}`);
-      // });
+      tun2socks.stdout.on('data', (data) => {
+        console.log(`tun2socks stdout: ${data}`);
+      });
+      tun2socks.stderr.on('data', (data) => {
+        console.log(`tun2socks stderr: ${data}`);
+      });
 
       resolve();
     } catch (e) {
