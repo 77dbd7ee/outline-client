@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { ChildProcess, exec, execFile, execFileSync } from 'child_process';
+import {ChildProcess, exec, execFile, execFileSync} from 'child_process';
 import * as net from 'net';
 import * as path from 'path';
 import * as process from 'process';
@@ -28,7 +28,7 @@ import * as errors from '../www/model/errors';
 //  - the value specified for --config.asarUnpack in package_action.sh
 function pathToEmbeddedExe(basename: string) {
   return path.join(
-    __dirname.replace('app.asar', 'app.asar.unpacked'), 'bin', 'win32', `${basename}.exe`);
+      __dirname.replace('app.asar', 'app.asar.unpacked'), 'bin', 'win32', `${basename}.exe`);
 }
 
 // Three tools are required to launch the proxy on Windows:
@@ -36,8 +36,8 @@ function pathToEmbeddedExe(basename: string) {
 //  - tun2socks for xxx
 //  - setsystemproxy.exe configures the system to route via tun2socks
 
-let ssLocal: ChildProcess | undefined;
-let tun2socks: ChildProcess | undefined;
+let ssLocal: ChildProcess|undefined;
+let tun2socks: ChildProcess|undefined;
 
 const PROXY_IP = '127.0.0.1';
 const SS_LOCAL_PORT = 1081;
@@ -68,49 +68,49 @@ const REACHABILITY_TEST_TIMEOUT_MS = 10000;
 // not test the Shadowsocks server's support for UDP because on Windows the Shadowsocks proxy is
 // fronted by a HTTP proxy, which does not support UDP.
 export function launchProxy(
-  config: cordova.plugins.outline.ServerConfig, onDisconnected: () => void) {
+    config: cordova.plugins.outline.ServerConfig, onDisconnected: () => void) {
   return isServerReachable(config)
-    .catch((e) => {
-      throw errors.ErrorCode.SERVER_UNREACHABLE;
-    })
-    .then(() => {
-      return startLocalShadowsocksProxy(config, onDisconnected);
-    })
-    .catch((e) => {
-      throw errors.ErrorCode.SHADOWSOCKS_START_FAILURE;
-    })
-    .then(() => {
-      return validateServerCredentials();
-    })
-    .catch((e) => {
-      throw errors.ErrorCode.INVALID_SERVER_CREDENTIALS;
-    })
-    .then(() => {
-      return startTun2socks(onDisconnected);
-    })
-    .catch((e) => {
-      throw errors.ErrorCode.HTTP_PROXY_START_FAILURE;
-    })
-    .then((port) => {
-      // there is a slight delay before tun2socks
-      // correctly configures the virtual router. before then,
-      // configuring the route table will not work as expected.
-      // TODO: hack tun2socks to write something to stdout when it's ready
-      return new Promise((F, R) => {
-        console.log('waiting 5s for tun2socks to come up...');
-        setTimeout(() => {
-          try {
-            configureRouting(TUN2SOCKS_VIRTUAL_ROUTER_IP, config.host || '');
-            F();
-          } catch (e) {
-            R(e);
-          }
-        }, 5000);
+      .catch((e) => {
+        throw errors.ErrorCode.SERVER_UNREACHABLE;
+      })
+      .then(() => {
+        return startLocalShadowsocksProxy(config, onDisconnected);
+      })
+      .catch((e) => {
+        throw errors.ErrorCode.SHADOWSOCKS_START_FAILURE;
+      })
+      .then(() => {
+        return validateServerCredentials();
+      })
+      .catch((e) => {
+        throw errors.ErrorCode.INVALID_SERVER_CREDENTIALS;
+      })
+      .then(() => {
+        return startTun2socks(onDisconnected);
+      })
+      .catch((e) => {
+        throw errors.ErrorCode.HTTP_PROXY_START_FAILURE;
+      })
+      .then((port) => {
+        // there is a slight delay before tun2socks
+        // correctly configures the virtual router. before then,
+        // configuring the route table will not work as expected.
+        // TODO: hack tun2socks to write something to stdout when it's ready
+        return new Promise((F, R) => {
+          console.log('waiting 5s for tun2socks to come up...');
+          setTimeout(() => {
+            try {
+              configureRouting(TUN2SOCKS_VIRTUAL_ROUTER_IP, config.host || '');
+              F();
+            } catch (e) {
+              R(e);
+            }
+          }, 5000);
+        });
+      })
+      .catch((e) => {
+        throw errors.ErrorCode.CONFIGURE_SYSTEM_PROXY_FAILURE;
       });
-    })
-    .catch((e) => {
-      throw errors.ErrorCode.CONFIGURE_SYSTEM_PROXY_FAILURE;
-    });
 }
 
 // Resolves with true iff a TCP connection can be established with the Shadowsocks server.
@@ -119,24 +119,24 @@ export function launchProxy(
 // cordova-plugin-outline.
 export function isServerReachable(config: cordova.plugins.outline.ServerConfig) {
   return util.timeoutPromise(
-    new Promise<void>((fulfill, reject) => {
-      const socket = new net.Socket();
-      socket
-        .connect(
-          { host: config.host || '', port: config.port || 0 },
-          () => {
-            socket.end();
-            fulfill();
-          })
-        .on('error', () => {
-          reject(new Error(`could not create socket, or connect to host`));
-        });
-    }),
-    REACHABILITY_TEST_TIMEOUT_MS);
+      new Promise<void>((fulfill, reject) => {
+        const socket = new net.Socket();
+        socket
+            .connect(
+                {host: config.host || '', port: config.port || 0},
+                () => {
+                  socket.end();
+                  fulfill();
+                })
+            .on('error', () => {
+              reject(new Error(`could not create socket, or connect to host`));
+            });
+      }),
+      REACHABILITY_TEST_TIMEOUT_MS);
 }
 
 function startLocalShadowsocksProxy(
-  serverConfig: cordova.plugins.outline.ServerConfig, onDisconnected: () => void) {
+    serverConfig: cordova.plugins.outline.ServerConfig, onDisconnected: () => void) {
   return new Promise((resolve, reject) => {
     // ss-local -s x.x.x.x -p 65336 -k mypassword -m aes-128-cfb -l 1081 -u
     const ssLocalArgs: string[] = ['-l', SS_LOCAL_PORT.toString()];
@@ -178,38 +178,38 @@ function startLocalShadowsocksProxy(
 function validateServerCredentials() {
   return new Promise((fulfill, reject) => {
     const testDomain =
-      CREDENTIALS_TEST_DOMAINS[Math.floor(Math.random() * CREDENTIALS_TEST_DOMAINS.length)];
+        CREDENTIALS_TEST_DOMAINS[Math.floor(Math.random() * CREDENTIALS_TEST_DOMAINS.length)];
     socks.createConnection(
-      {
-        proxy: { ipaddress: PROXY_IP, port: SS_LOCAL_PORT, type: 5 },
-        target: { host: testDomain, port: 80 }
-      },
-      (e, socket) => {
-        if (e) {
-          reject(new Error(`could not connect to remote test website: ${e.message}`));
-          return;
-        }
-
-        socket.write(`HEAD / HTTP/1.1\r\nHost: ${testDomain}\r\n\r\n`);
-
-        socket.on('data', (data) => {
-          if (data.toString().startsWith('HTTP/1.1')) {
-            socket.end();
-            fulfill();
-          } else {
-            socket.end();
-            reject(new Error(`unexpected response from remote test website`));
+        {
+          proxy: {ipaddress: PROXY_IP, port: SS_LOCAL_PORT, type: 5},
+          target: {host: testDomain, port: 80}
+        },
+        (e, socket) => {
+          if (e) {
+            reject(new Error(`could not connect to remote test website: ${e.message}`));
+            return;
           }
-        });
 
-        socket.on('close', () => {
-          reject(new Error(`could not connect to remote test website`));
-        });
+          socket.write(`HEAD / HTTP/1.1\r\nHost: ${testDomain}\r\n\r\n`);
 
-        // Sockets must be resumed before any data will come in, as they are paused right before
-        // this callback is fired.
-        socket.resume();
-      });
+          socket.on('data', (data) => {
+            if (data.toString().startsWith('HTTP/1.1')) {
+              socket.end();
+              fulfill();
+            } else {
+              socket.end();
+              reject(new Error(`unexpected response from remote test website`));
+            }
+          });
+
+          socket.on('close', () => {
+            reject(new Error(`could not connect to remote test website`));
+          });
+
+          // Sockets must be resumed before any data will come in, as they are paused right before
+          // this callback is fired.
+          socket.resume();
+        });
   });
 }
 
@@ -221,9 +221,9 @@ function startTun2socks(onDisconnected: () => void): Promise<void> {
     //   --socks-server-addr 127.0.0.1:1080
     const args: string[] = [];
     args.push(
-      '--tundev',
-      `tap0901:${TUN2SOCKS_TAP_DEVICE_NAME}:${TUN2SOCKS_TAP_DEVICE_IP}:${
-      TUN2SOCKS_TAP_DEVICE_NETWORK}:${TUN2SOCKS_VIRTUAL_ROUTER_NETMASK}`);
+        '--tundev',
+        `tap0901:${TUN2SOCKS_TAP_DEVICE_NAME}:${TUN2SOCKS_TAP_DEVICE_IP}:${
+            TUN2SOCKS_TAP_DEVICE_NETWORK}:${TUN2SOCKS_VIRTUAL_ROUTER_NETMASK}`);
     args.push('--netif-ipaddr', TUN2SOCKS_VIRTUAL_ROUTER_IP);
     args.push('--netif-netmask', TUN2SOCKS_VIRTUAL_ROUTER_NETMASK);
     args.push('--socks-server-addr', `${PROXY_IP}:${SS_LOCAL_PORT}`);
@@ -273,7 +273,7 @@ function stopTun2socks() {
 function configureRouting(tun2socksVirtualRouterIp: string, proxyServerIp: string) {
   try {
     const out = execFileSync(
-      pathToEmbeddedExe('setsystemproxy'), ['on', TUN2SOCKS_VIRTUAL_ROUTER_IP, proxyServerIp]);
+        pathToEmbeddedExe('setsystemproxy'), ['on', TUN2SOCKS_VIRTUAL_ROUTER_IP, proxyServerIp]);
     console.log(`setsystemproxy:\n===\n${out}===`);
 
     // Store the previous gateway, for disconnection.
@@ -303,7 +303,8 @@ function resetRouting() {
 
   try {
     const out = execFileSync(
-      pathToEmbeddedExe('setsystemproxy'), ['off', TUN2SOCKS_VIRTUAL_ROUTER_IP, '123.123.123.123', previousGateway]);
+        pathToEmbeddedExe('setsystemproxy'),
+        ['off', TUN2SOCKS_VIRTUAL_ROUTER_IP, '123.123.123.123', previousGateway]);
     console.log(`setsystemproxy:\n===\n${out}===`);
   } catch (e) {
     console.log(`setsystemproxy failed:\n===\n${e.stdout.toString()}===`);
