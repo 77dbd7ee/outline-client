@@ -45,9 +45,9 @@ const SS_LOCAL_PORT = 1081;
 const TUN2SOCKS_TAP_DEVICE_NAME = 'outline-tap0';
 
 // TODO: read these from the system!
-const TUN2SOCKS_TAP_DEVICE_IP = '192.168.7.2';
-const TUN2SOCKS_VIRTUAL_ROUTER_IP = '192.168.7.1';
-const TUN2SOCKS_TAP_DEVICE_NETWORK = '192.168.7.0';
+const TUN2SOCKS_TAP_DEVICE_IP = '10.0.85.2';
+const TUN2SOCKS_VIRTUAL_ROUTER_IP = '10.0.85.1';
+const TUN2SOCKS_TAP_DEVICE_NETWORK = '10.0.85.0';
 const TUN2SOCKS_VIRTUAL_ROUTER_NETMASK = '255.255.255.0';
 
 let previousGateway: string;
@@ -85,12 +85,12 @@ export function launchProxy(
       .catch((e) => {
         throw errors.ErrorCode.INVALID_SERVER_CREDENTIALS;
       })
-      .then(() => {
-        return startTun2socks(onDisconnected);
-      })
-      .catch((e) => {
-        throw errors.ErrorCode.HTTP_PROXY_START_FAILURE;
-      })
+      // .then(() => {
+      //   return startTun2socks(onDisconnected);
+      // })
+      // .catch((e) => {
+      //   throw errors.ErrorCode.HTTP_PROXY_START_FAILURE;
+      // })
       .then((port) => {
         // there is a slight delay before tun2socks
         // correctly configures the virtual router. before then,
@@ -100,7 +100,7 @@ export function launchProxy(
           console.log('waiting 5s for tun2socks to come up...');
           setTimeout(() => {
             try {
-              configureRouting(TUN2SOCKS_VIRTUAL_ROUTER_IP, config.host || '');
+              // configureRouting(TUN2SOCKS_VIRTUAL_ROUTER_IP, config.host || '');
               F();
             } catch (e) {
               R(e);
@@ -145,9 +145,17 @@ function startLocalShadowsocksProxy(
     ssLocalArgs.push('-k', serverConfig.password || '');
     ssLocalArgs.push('-m', serverConfig.method || '');
     ssLocalArgs.push('-u');
+    ssLocalArgs.push('-v');
 
     try {
       ssLocal = execFile(pathToEmbeddedExe('ss-local'), ssLocalArgs);
+
+      ssLocal.stdout.on('data', (data) => {
+        console.log(`ssLocal stdout: ${data}`);
+      });
+      ssLocal.stderr.on('data', (data) => {
+        console.log(`ssLocal stderr: ${data}`);
+      });
 
       ssLocal.on('exit', (code, signal) => {
         // We assume any signal sent to ss-local was sent by us.
@@ -216,9 +224,9 @@ function validateServerCredentials() {
 function startTun2socks(onDisconnected: () => void): Promise<void> {
   return new Promise((resolve, reject) => {
     // ./badvpn-tun2socks.exe \
-    //   --tundev "tap0901:outline-tap0:192.168.7.2:192.168.1.0:255.255.255.0" \
-    //   --netif-ipaddr 192.168.7.1 --netif-netmask 255.255.255.0 \
-    //   --socks-server-addr 127.0.0.1:1080
+    //   --tundev "tap0901:outline-tap0:10.0.85.2:10.0.85.0:255.255.255.0" \
+    //   --netif-ipaddr 10.0.85.1 --netif-netmask 255.255.255.0 \
+    //   --socks-server-addr 127.0.0.1:1081
     const args: string[] = [];
     args.push(
         '--tundev',

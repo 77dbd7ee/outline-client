@@ -273,13 +273,13 @@ int main(int argc, char* argv[]) {
       deleteRoute(dnsRow);
       printf("deleted old route to DNS server\n");
     }
-    dnsRow = createRowForSingleIp();
-    dnsRow->dwForwardDest = dnsIp;
-    dnsRow->dwForwardNextHop = oldGateway;
-    dnsRow->dwForwardMetric1 = oldGatewayInterfaceMetric;
-    dnsRow->dwForwardIfIndex = oldGatewayInterfaceIndex;
-    createRoute(dnsRow);
-    printf("added new route to DNS server\n");
+    // dnsRow = createRowForSingleIp();
+    // dnsRow->dwForwardDest = dnsIp;
+    // dnsRow->dwForwardNextHop = oldGateway;
+    // dnsRow->dwForwardMetric1 = oldGatewayInterfaceMetric;
+    // dnsRow->dwForwardIfIndex = oldGatewayInterfaceIndex;
+    // createRoute(dnsRow);
+    // printf("added new route to DNS server\n");
   } else {
     // TODO: When we aren't told the previous gateway, make a guess.
     if (gwRow) {

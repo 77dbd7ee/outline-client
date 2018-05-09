@@ -390,8 +390,6 @@ static int udp_init(UdpPcb* udp_pcb) {
         return 0;
     }
 
-    // TREV: no BFileDescriptor_Init on windows!
-
     // // Monitor socket for read
     // BFileDescriptor_Init(&udp_pcb->bfd, sockfd,
     //                      (BFileDescriptor_handler)udp_fd_handler, udp_pcb);
@@ -706,11 +704,14 @@ void run()
             BLog(BLOG_ERROR, "SocksUdpGwClient_Init failed");
             goto fail4a;
         }
-    } else if (options.socks5_udp) {
+    }
+
+    // TREV: fix this
+        BLog(BLOG_NOTICE, "initting UDP...");
         SocksUdpClient_Init(&socks_udp_client, udp_mtu, DEFAULT_UDPGW_MAX_CONNECTIONS,
                             UDPGW_KEEPALIVE_TIME, socks_server_addr, socks_auth_info,
                             socks_num_auth_info, &ss, NULL, udp_send_packet_to_device);
-    }
+    
 
     // init lwip init job
     BPending_Init(&lwip_init_job, BReactor_PendingGroup(&ss), lwip_init_job_handler, NULL);
@@ -1089,15 +1090,14 @@ int parse_arguments (int argc, char *argv[])
             }
             i++;
         }
-        // // TREV: oh! we don't want this right?
-        // else if (!strcmp(arg, "--transparent-dns")) {
-        //     options.transparent_dns = 1;
-        // }
         else {
             fprintf(stderr, "unknown option: %s\n", arg);
             return 0;
         }
     }
+
+        // TREV: do this right
+        options.transparent_dns = 0;
 
     if (options.help || options.version) {
         return 1;
@@ -1371,7 +1371,7 @@ void tcp_timer_handler (void *unused)
 
     // ==== PSIPHON ====
 
-    BLog(BLOG_DEBUG, "TCP timer");
+    // BLog(BLOG_DEBUG, "TCP timer");
 
     // schedule next timer
     // TODO: calculate timeout so we don't drift
@@ -1393,10 +1393,10 @@ void device_error_handler (void *unused)
 
 void device_read_handler_send (void *unused, uint8_t *data, int data_len)
 {
+    BLog(BLOG_DEBUG, "device: received packet");
+
     ASSERT(!quitting)
     ASSERT(data_len >= 0)
-
-    BLog(BLOG_DEBUG, "device: received packet");
 
     // accept packet
     PacketPassInterface_Done(&device_read_interface);
@@ -1429,11 +1429,13 @@ void device_read_handler_send (void *unused, uint8_t *data, int data_len)
 
 int process_device_udp_packet (uint8_t *data, int data_len)
 {
+    BLog(BLOG_DEBUG, "TREV: processing UDP packet");
+
     ASSERT(data_len >= 0)
-    // do nothing if we don't have udpgw or dns resolver
-    if (!options.udpgw_remote_server_addr && !options.dns_resolver_addr) {
-        goto fail;
-    }
+    // // do nothing if we don't have udpgw or dns resolver
+    // if (!options.udpgw_remote_server_addr && !options.dns_resolver_addr) {
+    //     goto fail;
+    // }
 
     BAddr local_addr;
     BAddr remote_addr;
@@ -1446,11 +1448,11 @@ int process_device_udp_packet (uint8_t *data, int data_len)
 
     switch (ip_version) {
         case 4: {
-            // ignore non-UDP packets
-            if (data_len < sizeof(struct ipv4_header) || data[offsetof(struct ipv4_header, protocol)] != IPV4_PROTOCOL_UDP) {
-                BLog(BLOG_DEBUG, "got non-UDP packet, protocol: %d", data[offsetof(struct ipv4_header, protocol)]);
-                goto fail;
-            }
+            // // ignore non-UDP packets
+            // if (data_len < sizeof(struct ipv4_header) || data[offsetof(struct ipv4_header, protocol)] != IPV4_PROTOCOL_UDP) {
+            //     BLog(BLOG_DEBUG, "got non-UDP packet, protocol: %d", data[offsetof(struct ipv4_header, protocol)]);
+            //     goto fail;
+            // }
 
             // parse IPv4 header
             struct ipv4_header ipv4_header;
@@ -1459,20 +1461,22 @@ int process_device_udp_packet (uint8_t *data, int data_len)
                 goto fail;
             }
 
-            // parse UDP
+            // // parse UDP
             struct udp_header udp_header;
-            if (!udp_check(data, data_len, &udp_header, &data, &data_len)) {
-                goto fail;
-            }
+            // if (!udp_check(data, data_len, &udp_header, &data, &data_len)) {
+            //     BLog(BLOG_DEBUG, "udp_check");
+            //     goto fail;
+            // }
 
-            // verify UDP checksum
-            uint16_t checksum_in_packet = udp_header.checksum;
-            udp_header.checksum = 0;
-            uint16_t checksum_computed = udp_checksum(&udp_header, data, data_len, ipv4_header.source_address, ipv4_header.destination_address);
-            if (checksum_in_packet != checksum_computed) {
-                goto fail;
-            }
-            BLog(BLOG_DEBUG, "UDP: from device %d bytes", data_len);
+            // // verify UDP checksum
+            // uint16_t checksum_in_packet = udp_header.checksum;
+            // udp_header.checksum = 0;
+            // uint16_t checksum_computed = udp_checksum(&udp_header, data, data_len, ipv4_header.source_address, ipv4_header.destination_address);
+            // if (checksum_in_packet != checksum_computed) {
+            //     BLog(BLOG_DEBUG, "checksum");
+            //     goto fail;
+            // }
+            // BLog(BLOG_DEBUG, "UDP: from device %d bytes", data_len);
 
             // construct addresses
             BAddr_InitIPv4(&local_addr, ipv4_header.source_address, udp_header.source_port);
@@ -1485,48 +1489,49 @@ int process_device_udp_packet (uint8_t *data, int data_len)
                       udp_header.dest_port == hton16(UDP_DNS_PORT));
         } break;
 
-        case 6: {
-            // ignore if IPv6 support is disabled
-            if (!options.netif_ip6addr) {
-                goto fail;
-            }
+        // case 6: {
+        //     // ignore if IPv6 support is disabled
+        //     if (!options.netif_ip6addr) {
+        //         goto fail;
+        //     }
 
-            // ignore non-UDP packets
-            if (data_len < sizeof(struct ipv6_header) || data[offsetof(struct ipv6_header, next_header)] != IPV6_NEXT_UDP) {
-                goto fail;
-            }
+        //     // ignore non-UDP packets
+        //     if (data_len < sizeof(struct ipv6_header) || data[offsetof(struct ipv6_header, next_header)] != IPV6_NEXT_UDP) {
+        //         goto fail;
+        //     }
 
-            // parse IPv6 header
-            struct ipv6_header ipv6_header;
-            if (!ipv6_check(data, data_len, &ipv6_header, &data, &data_len)) {
-                goto fail;
-            }
+        //     // parse IPv6 header
+        //     struct ipv6_header ipv6_header;
+        //     if (!ipv6_check(data, data_len, &ipv6_header, &data, &data_len)) {
+        //         goto fail;
+        //     }
 
-            // parse UDP
-            struct udp_header udp_header;
-            if (!udp_check(data, data_len, &udp_header, &data, &data_len)) {
-                goto fail;
-            }
+        //     // parse UDP
+        //     struct udp_header udp_header;
+        //     if (!udp_check(data, data_len, &udp_header, &data, &data_len)) {
+        //         goto fail;
+        //     }
 
-            // verify UDP checksum
-            uint16_t checksum_in_packet = udp_header.checksum;
-            udp_header.checksum = 0;
-            uint16_t checksum_computed = udp_ip6_checksum(&udp_header, data, data_len, ipv6_header.source_address, ipv6_header.destination_address);
-            if (checksum_in_packet != checksum_computed) {
-                goto fail;
-            }
+        //     // verify UDP checksum
+        //     uint16_t checksum_in_packet = udp_header.checksum;
+        //     udp_header.checksum = 0;
+        //     uint16_t checksum_computed = udp_ip6_checksum(&udp_header, data, data_len, ipv6_header.source_address, ipv6_header.destination_address);
+        //     if (checksum_in_packet != checksum_computed) {
+        //         goto fail;
+        //     }
 
-            BLog(BLOG_INFO, "UDP/IPv6: from device %d bytes", data_len);
+        //     BLog(BLOG_INFO, "UDP/IPv6: from device %d bytes", data_len);
 
-            // construct addresses
-            BAddr_InitIPv6(&local_addr, ipv6_header.source_address, udp_header.source_port);
-            BAddr_InitIPv6(&remote_addr, ipv6_header.destination_address, udp_header.dest_port);
+        //     // construct addresses
+        //     BAddr_InitIPv6(&local_addr, ipv6_header.source_address, udp_header.source_port);
+        //     BAddr_InitIPv6(&remote_addr, ipv6_header.destination_address, udp_header.dest_port);
 
-            // TODO dns
-            is_dns = 0;
-        } break;
+        //     // TODO dns
+        //     is_dns = 0;
+        // } break;
 
         default: {
+            BLog(BLOG_DEBUG, "YO weird");
             goto fail;
         } break;
     }
@@ -1543,49 +1548,51 @@ int process_device_udp_packet (uint8_t *data, int data_len)
     BAddr_Print(&remote_addr, remote_addr_str);
     BLog(BLOG_DEBUG, "UDP: %s -> %s. DNS: %d", local_addr_str, remote_addr_str, is_dns);
 
-    if (options.transparent_dns && is_dns) {
-        // Wrap the payload in a UDP SOCKS header.
-        static size_t socks_udp_header_len = sizeof(struct socks_udp_header);
-        struct socks_udp_header header;
-        memset(&header, 0, socks_udp_header_len);
-        header.atyp = SOCKS_ATYP_IPV4;
+    // if (options.transparent_dns && is_dns) {
+    //     // Wrap the payload in a UDP SOCKS header.
+    //     static size_t socks_udp_header_len = sizeof(struct socks_udp_header);
+    //     struct socks_udp_header header;
+    //     memset(&header, 0, socks_udp_header_len);
+    //     header.atyp = SOCKS_ATYP_IPV4;
 
-        static size_t socks_address_len = sizeof(struct socks_addr_ipv4);
-        struct socks_addr_ipv4 address;
-        address.addr = remote_addr.ipv4.ip;
-        address.port = remote_addr.ipv4.port;
+    //     static size_t socks_address_len = sizeof(struct socks_addr_ipv4);
+    //     struct socks_addr_ipv4 address;
+    //     address.addr = remote_addr.ipv4.ip;
+    //     address.port = remote_addr.ipv4.port;
 
-        size_t socks_udp_request_len = socks_udp_header_len + socks_address_len + data_len;
-        char socks_udp_request[socks_udp_request_len];
-        memcpy(socks_udp_request, &header, socks_udp_header_len);
-        memcpy(socks_udp_request + socks_udp_header_len, &address, socks_address_len);
-        memcpy(socks_udp_request + socks_udp_header_len + socks_address_len, data, data_len);
+    //     size_t socks_udp_request_len = socks_udp_header_len + socks_address_len + data_len;
+    //     char socks_udp_request[socks_udp_request_len];
+    //     memcpy(socks_udp_request, &header, socks_udp_header_len);
+    //     memcpy(socks_udp_request + socks_udp_header_len, &address, socks_address_len);
+    //     memcpy(socks_udp_request + socks_udp_header_len + socks_address_len, data, data_len);
 
-        int sent_bytes = udp_send(udp_pcb.sockfd, socks_udp_request, socks_udp_request_len);
-        if (sent_bytes < data_len) {
-            BLog(BLOG_ERROR, "udp_send: sent %d bytes, expected %d",
-                 sent_bytes, data_len);
-            goto fail;
-        }
+    //     int sent_bytes = udp_send(udp_pcb.sockfd, socks_udp_request, socks_udp_request_len);
+    //     if (sent_bytes < data_len) {
+    //         BLog(BLOG_ERROR, "udp_send: sent %d bytes, expected %d",
+    //              sent_bytes, data_len);
+    //         goto fail;
+    //     }
 
-        char dns_id_str[DNS_ID_STRLEN];
-        dns_get_header_id_str(dns_id_str, data);
-        if (!BStringMap_Set(&udp_pcb.map, dns_id_str, local_addr_str)) {
-            BLog(BLOG_ERROR,
-                 "failed to associate dns request id to local address");
-            goto fail;
-        }
-    } else if (options.udpgw_remote_server_addr) {
-        // submit packet to udpgw
-        SocksUdpGwClient_SubmitPacket(&udpgw_client, local_addr, remote_addr,
-                                      is_dns, data, data_len);
-    } else if (options.socks5_udp) {
-        SocksUdpClient_SubmitPacket(&socks_udp_client, local_addr, remote_addr, data, data_len);
-    }
+    //     char dns_id_str[DNS_ID_STRLEN];
+    //     dns_get_header_id_str(dns_id_str, data);
+    //     if (!BStringMap_Set(&udp_pcb.map, dns_id_str, local_addr_str)) {
+    //         BLog(BLOG_ERROR,
+    //              "failed to associate dns request id to local address");
+    //         goto fail;
+    //     }
+    // } else if (options.udpgw_remote_server_addr) {
+    //     // submit packet to udpgw
+    //     SocksUdpGwClient_SubmitPacket(&udpgw_client, local_addr, remote_addr,
+    //                                   is_dns, data, data_len);
+    // }
+    
+    BLog(BLOG_ERROR, "YO submit");
+    SocksUdpClient_SubmitPacket(&socks_udp_client, local_addr, remote_addr, data, data_len);
 
     return 1;
 
 fail:
+    BLog(BLOG_ERROR, "YO fail ***");
     return 0;
 }
 
