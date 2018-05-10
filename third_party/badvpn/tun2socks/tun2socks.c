@@ -386,7 +386,6 @@ static int udp_init(UdpPcb* udp_pcb) {
         close(sockfd);
         return 0;
     }
-
     // Monitor socket for read
     BFileDescriptor_Init(&udp_pcb->bfd, sockfd,
                          (BFileDescriptor_handler)udp_fd_handler, udp_pcb);
@@ -422,7 +421,6 @@ static int udp_recv(int sockfd, uint8_t* buffer, int buffer_len) {
 static void udp_free(UdpPcb* udp_pcb) {
     if (udp_pcb->buffer)
         free(udp_pcb->buffer);
-
     if (udp_pcb->sockfd) {
         BReactor_RemoveFileDescriptor(&ss, &udp_pcb->bfd);
         close(udp_pcb->sockfd);
@@ -554,7 +552,6 @@ int main (int argc, char **argv)
     if (!parse_arguments(argc, argv)) {
         fprintf(stderr, "Failed to parse arguments\n");
         print_help(argv[0]);
-        // TREV: psiphon changes broke this
         return 1;
     }
 
@@ -700,11 +697,9 @@ void run()
             goto fail4a;
         }
     } else if (options.socks5_udp) {
-        BLog(BLOG_NOTICE, "initting UDP...");
         SocksUdpClient_Init(&socks_udp_client, udp_mtu, DEFAULT_UDPGW_MAX_CONNECTIONS,
                             UDPGW_KEEPALIVE_TIME, socks_server_addr, socks_auth_info,
                             socks_num_auth_info, &ss, NULL, udp_send_packet_to_device);
-    
     }
 
     // init lwip init job
@@ -1139,6 +1134,11 @@ int parse_arguments (int argc, char *argv[])
         }
     }
 
+    if (options.udpgw_remote_server_addr && options.udp_relay_addr) {
+        fprintf(stderr, "--udpgw-remote-server-addr and --udp-relay cannot both be given\n");
+        return 0;
+    }
+
     return 1;
 }
 
@@ -1363,7 +1363,7 @@ void tcp_timer_handler (void *unused)
 {
     ASSERT(!quitting)
 
-    // // ==== PSIPHON ====
+    // ==== PSIPHON ====
 #ifdef PSIPHON
     // Check if the terminate flag has been set by Psiphon.
 
@@ -1438,8 +1438,6 @@ void device_read_handler_send (void *unused, uint8_t *data, int data_len)
 
 int process_device_udp_packet (uint8_t *data, int data_len)
 {
-    BLog(BLOG_DEBUG, "TREV: processing UDP packet");
-
     ASSERT(data_len >= 0)
     // do nothing if we don't have udpgw or dns resolver or UDP relay
     if (!options.udpgw_remote_server_addr && !options.dns_resolver_addr && !options.udp_relay_addr) {

@@ -261,7 +261,7 @@ static struct SocksUdpClient_connection *connection_init(SocksUdpClient *o, BAdd
         BLog(BLOG_ERROR, "Failed to initialize SOCKS client");
         goto fail2;
     }
-
+    
     // Ensure that the UDP handling pipeline can handle queries big enough to include
     // all data plus the SOCKS-UDP header.
     int socks_mtu = compute_mtu(o->udp_mtu);
