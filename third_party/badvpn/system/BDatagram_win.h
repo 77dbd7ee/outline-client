@@ -51,7 +51,6 @@ struct BDatagram_s {
     BReactor *reactor;
     void *user;
     BDatagram_handler handler;
-    int fd;
     SOCKET sock;
     LPFN_WSASENDMSG fnWSASendMsg;
     LPFN_WSARECVMSG fnWSARecvMsg;

@@ -244,18 +244,16 @@ static struct SocksUdpClient_connection *connection_init(SocksUdpClient *o, BAdd
     
     // Bind succeeded, so the kernel has found an open port.
     // Update socket_addr to the actual port that was bound.
-    // TREV: this works differently on windows and is only needed
-    //       for strict RFC compliance
-    // uint16_t port;
-    // if (!BDatagram_GetLocalPort(&con->socket, &port)) {
-    //     BLog(BLOG_ERROR, "Failed to get bound port");
-    //     goto fail2;
-    // }
-    // if (socket_addr.type == BADDR_TYPE_IPV4) {
-    //     socket_addr.ipv4.port = port;
-    // } else {
-    //     socket_addr.ipv6.port = port;
-    // }
+    uint16_t port;
+    if (!BDatagram_GetLocalPort(&con->socket, &port)) {
+        BLog(BLOG_ERROR, "Failed to get bound port");
+        goto fail2;
+    }
+    if (socket_addr.type == BADDR_TYPE_IPV4) {
+        socket_addr.ipv4.port = port;
+    } else {
+        socket_addr.ipv6.port = port;
+    }
     
     // Initiate connection to socks server
     if (!BSocksClient_Init(&con->socks, o->server_addr, o->auth_info, o->num_auth_info, socket_addr,
@@ -263,7 +261,7 @@ static struct SocksUdpClient_connection *connection_init(SocksUdpClient *o, BAdd
         BLog(BLOG_ERROR, "Failed to initialize SOCKS client");
         goto fail2;
     }
-    
+
     // Ensure that the UDP handling pipeline can handle queries big enough to include
     // all data plus the SOCKS-UDP header.
     int socks_mtu = compute_mtu(o->udp_mtu);

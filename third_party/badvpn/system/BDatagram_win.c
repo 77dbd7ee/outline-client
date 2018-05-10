@@ -645,7 +645,7 @@ int BDatagram_GetLocalPort (BDatagram *o, uint16_t *local_port)
     struct BDatagram_sys_addr sysaddr;
     BAddr addr;
     socklen_t addr_size = sizeof(sysaddr.addr.generic);
-    if (getsockname(o->fd, &sysaddr.addr.generic, &addr_size) != 0) {
+    if (getsockname(o->sock, &sysaddr.addr.generic, &addr_size) != 0) {
         BLog(BLOG_ERROR, "getsockname failed");
         return 0;
     }
