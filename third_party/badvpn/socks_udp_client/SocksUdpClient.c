@@ -233,10 +233,10 @@ static struct SocksUdpClient_connection *connection_init(SocksUdpClient *o, BAdd
     if (local_addr.type == BADDR_TYPE_IPV4) {
         init_localhost4(&socket_addr.ipv4.ip);
         // TREV: i dunno, just try it
-        socket_addr.ipv4.port = 9000;
+        socket_addr.ipv4.port = 0;
     } else if (local_addr.type == BADDR_TYPE_IPV6) {
         init_localhost6(socket_addr.ipv6.ip);
-        socket_addr.ipv6.port = 9000;
+        socket_addr.ipv6.port = 0;
     } else {
         BLog(BLOG_ERROR, "Unknown local address type");
         goto fail2;

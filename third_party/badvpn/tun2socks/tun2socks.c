@@ -1448,11 +1448,11 @@ int process_device_udp_packet (uint8_t *data, int data_len)
 
     switch (ip_version) {
         case 4: {
-            // // ignore non-UDP packets
-            // if (data_len < sizeof(struct ipv4_header) || data[offsetof(struct ipv4_header, protocol)] != IPV4_PROTOCOL_UDP) {
-            //     BLog(BLOG_DEBUG, "got non-UDP packet, protocol: %d", data[offsetof(struct ipv4_header, protocol)]);
-            //     goto fail;
-            // }
+            // ignore non-UDP packets
+            if (data_len < sizeof(struct ipv4_header) || data[offsetof(struct ipv4_header, protocol)] != IPV4_PROTOCOL_UDP) {
+                BLog(BLOG_DEBUG, "got non-UDP packet, protocol: %d", data[offsetof(struct ipv4_header, protocol)]);
+                goto fail;
+            }
 
             // parse IPv4 header
             struct ipv4_header ipv4_header;
@@ -1461,22 +1461,22 @@ int process_device_udp_packet (uint8_t *data, int data_len)
                 goto fail;
             }
 
-            // // parse UDP
+            // parse UDP
             struct udp_header udp_header;
-            // if (!udp_check(data, data_len, &udp_header, &data, &data_len)) {
-            //     BLog(BLOG_DEBUG, "udp_check");
-            //     goto fail;
-            // }
+            if (!udp_check(data, data_len, &udp_header, &data, &data_len)) {
+                BLog(BLOG_DEBUG, "udp_check");
+                goto fail;
+            }
 
-            // // verify UDP checksum
-            // uint16_t checksum_in_packet = udp_header.checksum;
-            // udp_header.checksum = 0;
-            // uint16_t checksum_computed = udp_checksum(&udp_header, data, data_len, ipv4_header.source_address, ipv4_header.destination_address);
-            // if (checksum_in_packet != checksum_computed) {
-            //     BLog(BLOG_DEBUG, "checksum");
-            //     goto fail;
-            // }
-            // BLog(BLOG_DEBUG, "UDP: from device %d bytes", data_len);
+            // verify UDP checksum
+            uint16_t checksum_in_packet = udp_header.checksum;
+            udp_header.checksum = 0;
+            uint16_t checksum_computed = udp_checksum(&udp_header, data, data_len, ipv4_header.source_address, ipv4_header.destination_address);
+            if (checksum_in_packet != checksum_computed) {
+                BLog(BLOG_DEBUG, "checksum");
+                goto fail;
+            }
+            BLog(BLOG_DEBUG, "UDP: from device %d bytes", data_len);
 
             // construct addresses
             BAddr_InitIPv4(&local_addr, ipv4_header.source_address, udp_header.source_port);
@@ -1548,6 +1548,7 @@ int process_device_udp_packet (uint8_t *data, int data_len)
     BAddr_Print(&remote_addr, remote_addr_str);
     BLog(BLOG_DEBUG, "UDP: %s -> %s. DNS: %d", local_addr_str, remote_addr_str, is_dns);
 
+// TREV: hmm, do we need to do the padding??
     // if (options.transparent_dns && is_dns) {
     //     // Wrap the payload in a UDP SOCKS header.
     //     static size_t socks_udp_header_len = sizeof(struct socks_udp_header);
