@@ -699,14 +699,13 @@ void run()
             BLog(BLOG_ERROR, "SocksUdpGwClient_Init failed");
             goto fail4a;
         }
-    }
-
-    // TREV: fix this
+    } else if (options.socks5_udp) {
         BLog(BLOG_NOTICE, "initting UDP...");
         SocksUdpClient_Init(&socks_udp_client, udp_mtu, DEFAULT_UDPGW_MAX_CONNECTIONS,
                             UDPGW_KEEPALIVE_TIME, socks_server_addr, socks_auth_info,
                             socks_num_auth_info, &ss, NULL, udp_send_packet_to_device);
     
+    }
 
     // init lwip init job
     BPending_Init(&lwip_init_job, BReactor_PendingGroup(&ss), lwip_init_job_handler, NULL);
@@ -768,22 +767,24 @@ void run()
         netif_remove(&netif);
     }
 
-    // // ==== PSIPHON ====
-    // // The existing tun2socks cleanup sometimes leaves some TCP connections
-    // // in the TIME_WAIT state. With regular tun2socks, these will be cleaned up
-    // // by process termination. Since we re-init tun2socks within one process,
-    // // and tcp_bind_to_netif requires no TCP connections bound to the network
-    // // interface, we need to explicitly clean these up. Since we're also closing
-    // // both sources of tunneled packets (VPN fd and SOCKS sockets), there should
-    // // be no need to keep these TCP connections in TIME_WAIT between tun2socks
-    // // invocations.
-    // // After further testing, we found at least one TCP connection left in the
-    // // active list (with state SYN_RCVD). Now we're aborting the active list
-    // // as well, and the bound list for good measure.
-    // tcp_remove(tcp_bound_pcbs);
-    // tcp_remove(tcp_active_pcbs);
-    // tcp_remove(tcp_tw_pcbs);
-    // // ==== PSIPHON ====
+    // ==== PSIPHON ====
+#ifdef PSIPHON
+    // The existing tun2socks cleanup sometimes leaves some TCP connections
+    // in the TIME_WAIT state. With regular tun2socks, these will be cleaned up
+    // by process termination. Since we re-init tun2socks within one process,
+    // and tcp_bind_to_netif requires no TCP connections bound to the network
+    // interface, we need to explicitly clean these up. Since we're also closing
+    // both sources of tunneled packets (VPN fd and SOCKS sockets), there should
+    // be no need to keep these TCP connections in TIME_WAIT between tun2socks
+    // invocations.
+    // After further testing, we found at least one TCP connection left in the
+    // active list (with state SYN_RCVD). Now we're aborting the active list
+    // as well, and the bound list for good measure.
+    tcp_remove(tcp_bound_pcbs);
+    tcp_remove(tcp_active_pcbs);
+    tcp_remove(tcp_tw_pcbs);
+#endif
+    // ==== PSIPHON ====
 
     // ==== OUTLINE ====
 #ifndef BADVPN_USE_WINAPI
@@ -861,6 +862,7 @@ void print_help (const char *name)
         "        [--udpgw-max-connections <number>]\n"
         "        [--udpgw-connection-buffer-size <number>]\n"
         "        [--udpgw-transparent-dns]\n"
+        "        [--socks-udp <addr>]\n"
         "Address format is a.b.c.d:port (IPv4) or [addr]:port (IPv6).\n",
         name
     );
@@ -961,6 +963,9 @@ int parse_arguments (int argc, char *argv[])
             }
             options.logger_syslog_ident = argv[i + 1];
             i++;
+        }
+        else if (!strcmp(arg, "--transparent-dns")) {
+            options.transparent_dns = 1;
         }
         #endif
         else if (!strcmp(arg, "--loglevel")) {
@@ -1089,14 +1094,19 @@ int parse_arguments (int argc, char *argv[])
             }
             i++;
         }
+        else if (!strcmp(arg, "--socks-udp")) {
+            if (1 >= argc - i) {
+                fprintf(stderr, "%s: requires an argument\n", arg);
+                return 0;
+            }
+            options.udp_relay_addr = argv[i + 1];
+            i++;
+        }
         else {
             fprintf(stderr, "unknown option: %s\n", arg);
             return 0;
         }
     }
-
-        // TREV: do this right
-        options.transparent_dns = 0;
 
     if (options.help || options.version) {
         return 1;
@@ -1215,15 +1225,15 @@ int process_arguments (void)
             BLog(BLOG_ERROR, "DNS resolver address: BAddr_Parse2 failed");
             return 0;
         }
-        // Resolve UDP relay address.
+    }
+
+    // Resolve UDP relay address.
+    if (options.udp_relay_addr) {
         if (!BAddr_Parse2(&udp_relay_addr, options.udp_relay_addr, NULL, 0, 0)) {
             BLog(BLOG_ERROR, "UDP relay address: BAddr_Parse2 failed");
             return 0;
         }
     }
-
-    // TREV: total hack for outline where udp relay == socks server
-    udp_relay_addr = socks_server_addr;
 
     return 1;
 }
@@ -1354,23 +1364,23 @@ void tcp_timer_handler (void *unused)
     ASSERT(!quitting)
 
     // // ==== PSIPHON ====
+#ifdef PSIPHON
+    // Check if the terminate flag has been set by Psiphon.
 
-    // // Check if the terminate flag has been set by Psiphon.
+    // TODO: instead of piggybacking on this timer,
+    // we could perhaps write to a pipe hooked into
+    // the BReactor event loop, which would eliminate
+    // any shutdown delay due to waiting for this timer.
 
-    // // TODO: instead of piggybacking on this timer,
-    // // we could perhaps write to a pipe hooked into
-    // // the BReactor event loop, which would eliminate
-    // // any shutdown delay due to waiting for this timer.
-
-    // if (__sync_bool_compare_and_swap(&g_terminate, 1, 1)) {
-    //     BLog(BLOG_INFO, "g_terminate is set");
-    //     terminate();
-    //     return;
-    // }
-
+    if (__sync_bool_compare_and_swap(&g_terminate, 1, 1)) {
+        BLog(BLOG_INFO, "g_terminate is set");
+        terminate();
+        return;
+    }
+#endif
     // ==== PSIPHON ====
 
-    // BLog(BLOG_DEBUG, "TCP timer");
+    BLog(BLOG_DEBUG, "TCP timer");
 
     // schedule next timer
     // TODO: calculate timeout so we don't drift
@@ -1392,10 +1402,10 @@ void device_error_handler (void *unused)
 
 void device_read_handler_send (void *unused, uint8_t *data, int data_len)
 {
-    BLog(BLOG_DEBUG, "device: received packet");
-
     ASSERT(!quitting)
     ASSERT(data_len >= 0)
+
+    BLog(BLOG_DEBUG, "device: received packet");
 
     // accept packet
     PacketPassInterface_Done(&device_read_interface);
@@ -1431,10 +1441,10 @@ int process_device_udp_packet (uint8_t *data, int data_len)
     BLog(BLOG_DEBUG, "TREV: processing UDP packet");
 
     ASSERT(data_len >= 0)
-    // // do nothing if we don't have udpgw or dns resolver
-    // if (!options.udpgw_remote_server_addr && !options.dns_resolver_addr) {
-    //     goto fail;
-    // }
+    // do nothing if we don't have udpgw or dns resolver or UDP relay
+    if (!options.udpgw_remote_server_addr && !options.dns_resolver_addr && !options.udp_relay_addr) {
+        goto fail;
+    }
 
     BAddr local_addr;
     BAddr remote_addr;
@@ -1582,8 +1592,9 @@ int process_device_udp_packet (uint8_t *data, int data_len)
         // submit packet to udpgw
         SocksUdpGwClient_SubmitPacket(&udpgw_client, local_addr, remote_addr,
                                       is_dns, data, data_len);
+    } else if (options.socks5_udp) {
+        SocksUdpClient_SubmitPacket(&socks_udp_client, local_addr, remote_addr, data, data_len);
     }
-    SocksUdpClient_SubmitPacket(&socks_udp_client, local_addr, remote_addr, data, data_len);
 
     return 1;
 
