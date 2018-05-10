@@ -315,6 +315,7 @@ if (BUILD_TUN2SOCKS)
     add_subdirectory(socks_udp_client)
     add_subdirectory(udpgw_client)
     add_subdirectory(lwip)
+    # necessary for outline changes
     add_subdirectory(stringmap)
 endif ()
 if (BUILD_TUNCTL)

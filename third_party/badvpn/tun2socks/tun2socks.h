@@ -24,8 +24,6 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <system/BReactor.h>
-
 // name of the program
 #define PROGRAM_NAME "tun2socks"
 
