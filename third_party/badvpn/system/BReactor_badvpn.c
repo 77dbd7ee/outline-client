@@ -366,7 +366,7 @@ static void wait_for_events (BReactor *bsys)
                 
                 set_iocp_ready(olap, (res == TRUE), bytes);
             } else {
-                // BLog(BLOG_DEBUG, "GetQueuedCompletionStatus timed out");
+                BLog(BLOG_DEBUG, "GetQueuedCompletionStatus timed out");
                 move_first_timers(bsys);
             }
             break;
@@ -787,7 +787,7 @@ int BReactor_Exec (BReactor *bsys)
             timer->state = TIMER_STATE_INACTIVE;
             
             // call handler
-            // BLog(BLOG_DEBUG, "Dispatching timer");
+            BLog(BLOG_DEBUG, "Dispatching timer");
             if (timer->is_small) {
                 timer->handler.smalll(timer);
             } else {

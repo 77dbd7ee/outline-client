@@ -150,8 +150,6 @@ void do_receive (BSocksClient *o)
 
 void connector_handler (BSocksClient* o, int is_error)
 {
-    BLog(BLOG_DEBUG, "connector_handler");
-
     DebugObject_Access(&o->d_obj);
     ASSERT(o->state == STATE_CONNECTING)
     
@@ -492,9 +490,6 @@ fail:
 
 void auth_finished (BSocksClient *o)
 {
-
-// TREV: seems like we can lookup the port now???
-
     // allocate request buffer
     bsize_t size = bsize_fromsize(sizeof(struct socks_request_header));
     switch (o->dest_addr.type) {

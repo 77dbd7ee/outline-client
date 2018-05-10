@@ -173,8 +173,6 @@ static void datagram_abort (BDatagram *o)
 
 static void start_send (BDatagram *o)
 {
-    BLog(BLOG_DEBUG, "start_send");
-
     DebugError_AssertNoError(&o->d_err);
     ASSERT(!o->aborted)
     ASSERT(o->send.inited)
@@ -254,8 +252,6 @@ static void start_send (BDatagram *o)
 
 static void start_recv (BDatagram *o)
 {
-    BLog(BLOG_DEBUG, "recv!!");
-
     DebugError_AssertNoError(&o->d_err);
     ASSERT(!o->aborted)
     ASSERT(o->recv.inited)
@@ -646,32 +642,24 @@ int BDatagram_GetLocalPort (BDatagram *o, uint16_t *local_port)
 {
     DebugObject_Access(&o->d_obj);
     
-    // struct BDatagram_sys_addr sysaddr;
-    // BAddr addr;
-    // socklen_t addr_size = sizeof(sysaddr.addr.generic);
-    // if (getsockname(o->fd, &sysaddr.addr.generic, &addr_size) != 0) {
-    //     BLog(BLOG_ERROR, "getsockname failed");
-    //     return 0;
-    // }
-    // 
-    // addr_sys_to_socket(&addr, sysaddr);
-    // if (addr.type == BADDR_TYPE_IPV4) {
-    //     *local_port = addr.ipv4.port;
-    //     return 1;
-    // }
-    // if (addr.type == BADDR_TYPE_IPV6) {
-    //     *local_port = addr.ipv6.port;
-    //     return 1;
-    // }
-    // BLog(BLOG_ERROR, "Unknown address type from getsockname: %d", addr.type);
-
-    struct sockaddr sin;
-    int addrlen = sizeof(sin);
-    if(getsockname(o->fd, &sin, &addrlen) != 0) {
-      BLog(BLOG_ERROR, "getsockname failed");
-      return 0;
+    struct BDatagram_sys_addr sysaddr;
+    BAddr addr;
+    socklen_t addr_size = sizeof(sysaddr.addr.generic);
+    if (getsockname(o->fd, &sysaddr.addr.generic, &addr_size) != 0) {
+        BLog(BLOG_ERROR, "getsockname failed");
+        return 0;
     }
-
+    
+    addr_sys_to_socket(&addr, sysaddr);
+    if (addr.type == BADDR_TYPE_IPV4) {
+        *local_port = addr.ipv4.port;
+        return 1;
+    }
+    if (addr.type == BADDR_TYPE_IPV6) {
+        *local_port = addr.ipv6.port;
+        return 1;
+    }
+    BLog(BLOG_ERROR, "Unknown address type from getsockname: %d", address.type);
     return 0;
 }
 

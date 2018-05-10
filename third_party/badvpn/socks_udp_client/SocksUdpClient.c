@@ -82,7 +82,6 @@ static void socks_state_handler(struct SocksUdpClient_connection *con, int event
 {
     switch (event) {
         case BSOCKSCLIENT_EVENT_UP: {
-            BLog(BLOG_DEBUG, "BSOCKSCLIENT_EVENT_UP!");
             BIPAddr localhost;
             localhost.type = con->client->server_addr.type;
             if (localhost.type == BADDR_TYPE_IPV4) {
@@ -125,8 +124,6 @@ static void send_monitor_handler (struct SocksUdpClient_connection *con)
 
 static void recv_if_handler_send(struct SocksUdpClient_connection *con, uint8_t *data, int data_len)
 {
-    BLog(BLOG_DEBUG, "recv!");
-
     SocksUdpClient *o = con->client;
     DebugObject_Access(&con->client->d_obj);
     ASSERT(data_len >= 0)
@@ -232,7 +229,6 @@ static struct SocksUdpClient_connection *connection_init(SocksUdpClient *o, BAdd
     socket_addr.type = local_addr.type;
     if (local_addr.type == BADDR_TYPE_IPV4) {
         init_localhost4(&socket_addr.ipv4.ip);
-        // TREV: i dunno, just try it
         socket_addr.ipv4.port = 0;
     } else if (local_addr.type == BADDR_TYPE_IPV6) {
         init_localhost6(socket_addr.ipv6.ip);
@@ -248,8 +244,9 @@ static struct SocksUdpClient_connection *connection_init(SocksUdpClient *o, BAdd
     
     // Bind succeeded, so the kernel has found an open port.
     // Update socket_addr to the actual port that was bound.
+    // TREV: this works differently on windows and is only needed
+    //       for strict RFC compliance
     // uint16_t port;
-    // TREV: port not avilable until some data has been received???
     // if (!BDatagram_GetLocalPort(&con->socket, &port)) {
     //     BLog(BLOG_ERROR, "Failed to get bound port");
     //     goto fail2;
@@ -259,7 +256,6 @@ static struct SocksUdpClient_connection *connection_init(SocksUdpClient *o, BAdd
     // } else {
     //     socket_addr.ipv6.port = port;
     // }
-    // BLog(BLOG_DEBUG, "new port: %d", port);
     
     // Initiate connection to socks server
     if (!BSocksClient_Init(&con->socks, o->server_addr, o->auth_info, o->num_auth_info, socket_addr,
@@ -483,7 +479,6 @@ void SocksUdpClient_SubmitPacket (SocksUdpClient *o, BAddr local_addr, BAddr rem
     // lookup connection
     struct SocksUdpClient_connection *con = find_connection_by_addr(o, local_addr);
     if (!con) {
-        BLog(BLOG_DEBUG, "no con");
         if (o->num_connections == o->max_connections) {
             // Drop the packet.
             BLog(BLOG_ERROR, "Dropping UDP packet, reached max number of connections.");
@@ -493,7 +488,6 @@ void SocksUdpClient_SubmitPacket (SocksUdpClient *o, BAddr local_addr, BAddr rem
         connection_init(o, local_addr, remote_addr, data, data_len);
     } else {
       // send packet
-      BLog(BLOG_DEBUG, "con!");
       connection_send(con, remote_addr, data, data_len);
     }
 }

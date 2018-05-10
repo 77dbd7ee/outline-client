@@ -269,7 +269,6 @@ int BTap_Init2 (BTap *o, BReactor *reactor, struct BTap_init_data init_data, BTa
     
     // get MTU
     
-    // TREV: these two liunes changed
     ULONG umtu = 0;
     if (!DeviceIoControl(o->device, TAP_IOCTL_GET_MTU, &umtu, sizeof(umtu), &umtu, sizeof(umtu), &len, NULL)) {
         BLog(BLOG_ERROR, "DeviceIoControl(TAP_IOCTL_GET_MTU) failed");
