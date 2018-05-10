@@ -19,11 +19,16 @@ yarn do electron/build
 cp package.json build/windows/
 scripts/environment_json.sh -p windows > build/windows/www/environment.json
 
-cp -R third_party/tap-windows6 build/windows/
+# Copy tap-windows6.
+cp -R third_party/tap-windows6/bin build/windows/tap-windows6
 
 # --config.asarUnpack must be kept in sync with:
 #  - the destination path for the binaries in build_action.sh
 #  - the value returned by process_manager.ts#pathToEmbeddedExe
+
+# --config.nsis.perMachine=true makes the installer require
+# admin permissions, which are required to install and configure
+# the TAP device.
 
 electron-builder \
   --projectDir=build/windows \
@@ -32,9 +37,7 @@ electron-builder \
   --publish=never \
   --win nsis \
   --config.win.icon=icons/win/icon.ico \
-  --config.win.requestedExecutionLevel=requireAdministrator \
-  --config.nsis.artifactName='Outline-Client.${ext}' \
   --config.nsis.perMachine=true \
-  --config.nsis.oneClick=false \
+  --config.nsis.include=electron/custom_install_steps.nsh \
   --config.nsis.allowElevation=true \
-  --config.nsis.include=electron/add_tap_device.nsh
+  --config.nsis.artifactName='Outline-Client.${ext}'
