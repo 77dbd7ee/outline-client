@@ -270,8 +270,9 @@ int BTap_Init2 (BTap *o, BReactor *reactor, struct BTap_init_data init_data, BTa
     // get MTU
     
     // https://github.com/ambrop72/badvpn/commit/3940ed01b4c611485977bad4da38283e0cf48ec2#diff-a8dc9fa9441d551dbd2d36238c63099b
-    ULONG umtu;
-    if (!DeviceIoControl(o->device, TAP_IOCTL_GET_MTU, NULL, 0, &umtu, sizeof(umtu), &len, NULL)) {
+    ULONG umtu = 0;
+
+    if (!DeviceIoControl(o->device, TAP_IOCTL_GET_MTU, &umtu, sizeof(umtu), &umtu, sizeof(umtu), &len, NULL)) {
         BLog(BLOG_ERROR, "DeviceIoControl(TAP_IOCTL_GET_MTU) failed");
         goto fail2;
     }

@@ -36,6 +36,11 @@
 #include <string.h>
 #include <limits.h>
 
+// PSIPHON
+#ifdef PSIPHON
+#include "jni.h"
+#endif
+
 #include <misc/version.h>
 #include <misc/loggers_string.h>
 #include <misc/loglevel.h>
@@ -68,17 +73,11 @@
 #include <lwip/tcp.h>
 #include <tun2socks/SocksUdpGwClient.h>
 #include <socks_udp_client/SocksUdpClient.h>
-
-#ifdef BADVPN_USE_WINAPI
-#include <ws2tcpip.h>
-#else
-#include <sys/socket.h>
-#endif
-
 #include <stringmap/BStringMap.h>
 
 #ifndef BADVPN_USE_WINAPI
 #include <base/BLog_syslog.h>
+#include <sys/socket.h>
 #endif
 
 #include <tun2socks/tun2socks.h>
@@ -281,13 +280,13 @@ static err_t client_sent_func (void *arg, struct tcp_pcb *tpcb, u16_t len);
 static void udp_send_packet_to_device (void *unused, BAddr local_addr, BAddr remote_addr, const uint8_t *data, int data_len);
 
 //==== OUTLINE ====
+#ifndef BADVPN_USE_WINAPI
 
 // UDP process control block, used for UDP communications housekeeping.
 typedef struct {
     int sockfd;  // UDP socket file descriptor
     uint8_t *buffer;  // Data buffer
-    // TREV: doesn't exist on windows!
-    // BFileDescriptor bfd;  // File descriptor object for BReactor
+    BFileDescriptor bfd;  // File descriptor object for BReactor
     BStringMap map;  // Maps DNS id request to source IP address
 } UdpPcb;
 
@@ -368,7 +367,7 @@ static int udp_init(UdpPcb* udp_pcb) {
     local_addr.sin_port = htons(0);
     if (bind(sockfd, (struct sockaddr *)&local_addr, sizeof(local_addr)) < 0) {
         BLog(BLOG_ERROR, "udp_init: failed to bind socket");
-        // close(sockfd);
+        close(sockfd);
         return 0;
     }
     char udp_relay_addr_str[BADDR_MAX_PRINT_LEN];
@@ -384,19 +383,19 @@ static int udp_init(UdpPcb* udp_pcb) {
     remote_addr.sin_port = udp_relay_addr.ipv4.port;
     if (connect(sockfd, (struct sockaddr *)&remote_addr, sizeof(remote_addr)) < 0) {
         BLog(BLOG_ERROR, "udp_init: failed to connect to remote");
-        // close(sockfd);
+        close(sockfd);
         return 0;
     }
 
-    // // Monitor socket for read
-    // BFileDescriptor_Init(&udp_pcb->bfd, sockfd,
-    //                      (BFileDescriptor_handler)udp_fd_handler, udp_pcb);
-    // if (!BReactor_AddFileDescriptor(&ss, &udp_pcb->bfd)) {
-    //     BLog(BLOG_ERROR, "udp_init: failed to add fd to event loop");
-    //     close(sockfd);
-    //     return 0;
-    // }
-    // BReactor_SetFileDescriptorEvents(&ss, &udp_pcb->bfd, BREACTOR_READ);
+    // Monitor socket for read
+    BFileDescriptor_Init(&udp_pcb->bfd, sockfd,
+                         (BFileDescriptor_handler)udp_fd_handler, udp_pcb);
+    if (!BReactor_AddFileDescriptor(&ss, &udp_pcb->bfd)) {
+        BLog(BLOG_ERROR, "udp_init: failed to add fd to event loop");
+        close(sockfd);
+        return 0;
+    }
+    BReactor_SetFileDescriptorEvents(&ss, &udp_pcb->bfd, BREACTOR_READ);
 
     udp_pcb->sockfd = sockfd;
     BStringMap_Init(&udp_pcb->map);
@@ -424,16 +423,14 @@ static void udp_free(UdpPcb* udp_pcb) {
     if (udp_pcb->buffer)
         free(udp_pcb->buffer);
 
-    // TREV: no BFileDescriptor on windows!
-        
-    // if (udp_pcb->sockfd) {
-    //     BReactor_RemoveFileDescriptor(&ss, &udp_pcb->bfd);
-    //     close(udp_pcb->sockfd);
-    // }
+    if (udp_pcb->sockfd) {
+        BReactor_RemoveFileDescriptor(&ss, &udp_pcb->bfd);
+        close(udp_pcb->sockfd);
+    }
 
     BStringMap_Free(&udp_pcb->map);
 }
-
+#endif
 //==== OUTLINE =====
 
 //==== PSIPHON ====
@@ -557,7 +554,7 @@ int main (int argc, char **argv)
     if (!parse_arguments(argc, argv)) {
         fprintf(stderr, "Failed to parse arguments\n");
         print_help(argv[0]);
-        // goto fail0;
+        // TREV: psiphon changes broke this
         return 1;
     }
 
@@ -740,9 +737,11 @@ void run()
     num_clients = 0;
 
     // ==== OUTLINE ====
+#ifndef BADVPN_USE_WINAPI
     if (!udp_init(&udp_pcb)) {
         goto fail5;
     }
+#endif
     // ==== OUTLINE ====
 
     // enter event loop
@@ -787,7 +786,9 @@ void run()
     // // ==== PSIPHON ====
 
     // ==== OUTLINE ====
+#ifndef BADVPN_USE_WINAPI
     udp_free(&udp_pcb);
+#endif
     // ==== OUTLINE ====
 
     BReactor_RemoveTimer(&ss, &tcp_timer);
@@ -1544,6 +1545,7 @@ int process_device_udp_packet (uint8_t *data, int data_len)
     BLog(BLOG_DEBUG, "UDP: %s -> %s. DNS: %d", local_addr_str, remote_addr_str, is_dns);
 
     if (options.transparent_dns && is_dns) {
+#ifndef BADVPN_USE_WINAPI
         // Wrap the payload in a UDP SOCKS header.
         static size_t socks_udp_header_len = sizeof(struct socks_udp_header);
         struct socks_udp_header header;
@@ -1575,6 +1577,7 @@ int process_device_udp_packet (uint8_t *data, int data_len)
                  "failed to associate dns request id to local address");
             goto fail;
         }
+#endif
     } else if (options.udpgw_remote_server_addr) {
         // submit packet to udpgw
         SocksUdpGwClient_SubmitPacket(&udpgw_client, local_addr, remote_addr,
