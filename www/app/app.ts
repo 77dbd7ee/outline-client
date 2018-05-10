@@ -39,8 +39,8 @@ export class App {
       private rootEl: polymer.Base, private debugMode: boolean,
       urlInterceptor: UrlInterceptor|undefined, private clipboard: Clipboard,
       private errorReporter: OutlineErrorReporter, private settings: Settings,
-      private environmentVars: EnvironmentVariables,
-      private updater: Updater, document = window.document) {
+      private environmentVars: EnvironmentVariables, private updater: Updater,
+      document = window.document) {
     this.serverListEl = rootEl.$.serversView.$.serverList;
     this.feedbackViewEl = rootEl.$.feedbackView;
 
