@@ -130,7 +130,6 @@ struct {
     int tun_mtu;
     int set_signal;
     // ==== PSIPHON ====
-
     // ==== OUTLINE ====
 #ifndef BADVPN_USE_WINAPI
     int transparent_dns;
@@ -1571,6 +1570,8 @@ int process_device_udp_packet (uint8_t *data, int data_len)
             // construct addresses
             BAddr_InitIPv6(&local_addr, ipv6_header.source_address, udp_header.source_port);
             BAddr_InitIPv6(&remote_addr, ipv6_header.destination_address, udp_header.dest_port);
+
+            // TODO: is_dns
         } break;
 
         default: {
@@ -1627,11 +1628,9 @@ int process_device_udp_packet (uint8_t *data, int data_len)
 #endif
     if (options.udpgw_remote_server_addr) {
         // submit packet to udpgw
-        BLog(BLOG_DEBUG, "NO");
         SocksUdpGwClient_SubmitPacket(&udpgw_client, local_addr, remote_addr,
                                       is_dns, data, data_len);
     } else if (options.udp_relay_addr) {
-        BLog(BLOG_DEBUG, "YES");
         SocksUdpClient_SubmitPacket(&socks_udp_client, local_addr, remote_addr, data, data_len);
     }
 
