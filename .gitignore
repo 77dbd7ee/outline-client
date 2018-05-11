@@ -14,5 +14,3 @@ info.txt
 /Carthage
 xcuserdata/
 dist/
-/third_party/badvpn/build
-!/third_party/badvpn/build/tun2socks/badvpn-tun2socks.exe

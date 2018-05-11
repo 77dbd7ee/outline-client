@@ -124,17 +124,20 @@ struct {
     char *udpgw_remote_server_addr;
     int udpgw_max_connections;
     int udpgw_connection_buffer_size;
-    int transparent_dns;
 
     // ==== PSIPHON ====
     int tun_fd;
     int tun_mtu;
     int set_signal;
     // ==== PSIPHON ====
+
     // ==== OUTLINE ====
+#ifndef BADVPN_USE_WINAPI
+    int transparent_dns;
     char *dns_resolver_addr;
-    char *udp_relay_addr;
+#endif
     int socks5_udp;
+    char *udp_relay_addr;
     // ==== OUTLINE ====
 } options;
 
@@ -857,7 +860,12 @@ void print_help (const char *name)
         "        [--udpgw-max-connections <number>]\n"
         "        [--udpgw-connection-buffer-size <number>]\n"
         "        [--udpgw-transparent-dns]\n"
-        "        [--socks-udp <addr>]\n"
+    // ==== OUTLINE ====
+        "        [--transparent-dns]\n"
+        "        [--dns-resolver-addr <addr>]\n"
+        "        [--socks-udp]\n"
+        "        [--udp-relay-addr <addr>]\n"
+    // ==== OUTLINE ====
         "Address format is a.b.c.d:port (IPv4) or [addr]:port (IPv6).\n",
         name
     );
@@ -895,8 +903,14 @@ void init_arguments (const char* program_name)
     options.udpgw_remote_server_addr = NULL;
     options.udpgw_max_connections = DEFAULT_UDPGW_MAX_CONNECTIONS;
     options.udpgw_connection_buffer_size = DEFAULT_UDPGW_CONNECTION_BUFFER_SIZE;
+    // ==== OUTLINE ====
+#ifndef BADVPN_USE_WINAPI
     options.transparent_dns = 0;
     options.dns_resolver_addr = NULL;
+#endif
+    options.socks5_udp = 0;
+    options.udp_relay_addr = NULL;
+    // ==== OUTLINE ====
 
     options.tun_fd = 0;
     options.set_signal = 1;
@@ -958,9 +972,6 @@ int parse_arguments (int argc, char *argv[])
             }
             options.logger_syslog_ident = argv[i + 1];
             i++;
-        }
-        else if (!strcmp(arg, "--transparent-dns")) {
-            options.transparent_dns = 1;
         }
         #endif
         else if (!strcmp(arg, "--loglevel")) {
@@ -1089,7 +1100,24 @@ int parse_arguments (int argc, char *argv[])
             }
             i++;
         }
-        else if (!strcmp(arg, "--socks-udp")) {
+        // ==== OUTLINE ====
+#ifndef BADVPN_USE_WINAPI
+        else if (!strcmp(arg, "--transparent-dns")) {
+            options.transparent_dns = 1;
+        }
+        else if (!strcmp(arg, "--dns-resolver-addr")) {
+            if (1 >= argc - i) {
+                fprintf(stderr, "%s: requires an argument\n", arg);
+                return 0;
+            }
+            options.dns_resolver_addr = argv[i + 1];
+            i++;
+        }
+#endif
+        else if (!strcmp(arg, "--socks5-udp")) {
+            options.socks5_udp = 1;
+        }
+        else if (!strcmp(arg, "--udp-relay-addr")) {
             if (1 >= argc - i) {
                 fprintf(stderr, "%s: requires an argument\n", arg);
                 return 0;
@@ -1097,6 +1125,7 @@ int parse_arguments (int argc, char *argv[])
             options.udp_relay_addr = argv[i + 1];
             i++;
         }
+        // ==== OUTLINE ====
         else {
             fprintf(stderr, "unknown option: %s\n", arg);
             return 0;
@@ -1213,6 +1242,8 @@ int process_arguments (void)
         }
     }
 
+    // ==== OUTLINE ====
+#ifndef BADVPN_USE_WINAPI
     if (options.transparent_dns) {
         if (!options.dns_resolver_addr || !options.udp_relay_addr) {
             BLog(BLOG_ERROR,
@@ -1226,14 +1257,18 @@ int process_arguments (void)
             return 0;
         }
     }
+#endif
 
     // Resolve UDP relay address.
-    if (options.udp_relay_addr) {
-        if (!BAddr_Parse2(&udp_relay_addr, options.udp_relay_addr, NULL, 0, 0)) {
-            BLog(BLOG_ERROR, "UDP relay address: BAddr_Parse2 failed");
-            return 0;
+    if (options.socks5_udp) {
+        if (options.udp_relay_addr) {
+            if (!BAddr_Parse2(&udp_relay_addr, options.udp_relay_addr, NULL, 0, 0)) {
+                BLog(BLOG_ERROR, "UDP relay address: BAddr_Parse2 failed");
+                return 0;
+            }
         }
     }
+    // ==== OUTLINE ====
 
     return 1;
 }
@@ -1440,13 +1475,17 @@ int process_device_udp_packet (uint8_t *data, int data_len)
 {
     ASSERT(data_len >= 0)
     // do nothing if we don't have udpgw or dns resolver or UDP relay
-    if (!options.udpgw_remote_server_addr && !options.dns_resolver_addr && !options.udp_relay_addr) {
+    if (!options.udpgw_remote_server_addr &&
+#ifndef BADVPN_USE_WINAPI
+        !options.dns_resolver_addr &&
+#endif
+        !options.udp_relay_addr) {
         goto fail;
     }
 
     BAddr local_addr;
     BAddr remote_addr;
-    int is_dns;
+    int is_dns = 0;
 
     uint8_t ip_version = 0;
     if (data_len > 0) {
@@ -1487,11 +1526,13 @@ int process_device_udp_packet (uint8_t *data, int data_len)
             BAddr_InitIPv4(&local_addr, ipv4_header.source_address, udp_header.source_port);
             BAddr_InitIPv4(&remote_addr, ipv4_header.destination_address, udp_header.dest_port);
 
+#ifndef BADVPN_USE_WINAPI
             // if transparent DNS is enabled, any packet to the DNS resolver on
             // port 53 is considered a DNS packet
             is_dns = (options.transparent_dns &&
                       remote_addr.ipv4.ip == dns_resolver_addr.ipv4.ip &&
                       udp_header.dest_port == hton16(UDP_DNS_PORT));
+#endif
         } break;
 
         case 6: {
@@ -1530,9 +1571,6 @@ int process_device_udp_packet (uint8_t *data, int data_len)
             // construct addresses
             BAddr_InitIPv6(&local_addr, ipv6_header.source_address, udp_header.source_port);
             BAddr_InitIPv6(&remote_addr, ipv6_header.destination_address, udp_header.dest_port);
-
-            // TODO dns
-            is_dns = 0;
         } break;
 
         default: {
@@ -1552,8 +1590,8 @@ int process_device_udp_packet (uint8_t *data, int data_len)
     BAddr_Print(&remote_addr, remote_addr_str);
     BLog(BLOG_DEBUG, "UDP: %s -> %s. DNS: %d", local_addr_str, remote_addr_str, is_dns);
 
-    if (options.transparent_dns && is_dns) {
 #ifndef BADVPN_USE_WINAPI
+    if (options.transparent_dns && is_dns) {
         // Wrap the payload in a UDP SOCKS header.
         static size_t socks_udp_header_len = sizeof(struct socks_udp_header);
         struct socks_udp_header header;
@@ -1585,12 +1623,15 @@ int process_device_udp_packet (uint8_t *data, int data_len)
                  "failed to associate dns request id to local address");
             goto fail;
         }
+    }
 #endif
-    } else if (options.udpgw_remote_server_addr) {
+    if (options.udpgw_remote_server_addr) {
         // submit packet to udpgw
+        BLog(BLOG_DEBUG, "NO");
         SocksUdpGwClient_SubmitPacket(&udpgw_client, local_addr, remote_addr,
                                       is_dns, data, data_len);
-    } else if (options.socks5_udp) {
+    } else if (options.udp_relay_addr) {
+        BLog(BLOG_DEBUG, "YES");
         SocksUdpClient_SubmitPacket(&socks_udp_client, local_addr, remote_addr, data, data_len);
     }
 

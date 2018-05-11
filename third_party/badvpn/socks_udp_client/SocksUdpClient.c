@@ -189,7 +189,7 @@ static struct SocksUdpClient_connection *connection_init(SocksUdpClient *o, BAdd
     
     char buffer[BADDR_MAX_PRINT_LEN];
     BAddr_Print(&local_addr, buffer);
-    BLog(BLOG_DEBUG, "Creating new connection for %s", buffer);
+    BLog(BLOG_DEBUG, "Creating new connection for %s (current: %d)", buffer, o->num_connections);
     
     // allocate structure
     struct SocksUdpClient_connection *con = (struct SocksUdpClient_connection *)malloc(sizeof(*con));

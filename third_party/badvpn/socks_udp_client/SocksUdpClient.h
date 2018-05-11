@@ -45,7 +45,7 @@
 // This sets the number of packets to accept while waiting for SOCKS server to authenticate and
 // connect.  A slow or far-away SOCKS server could require 300 ms to connect, and a chatty
 // client (e.g. STUN) could send a packet every 20 ms, so a limit of 16 seems reasonable.
-#define SOCKS_UDP_SEND_BUFFER_PACKETS 16
+#define SOCKS_UDP_SEND_BUFFER_PACKETS 1024
 
 typedef void (*SocksUdpClient_handler_received) (void *user, BAddr local_addr, BAddr remote_addr, const uint8_t *data, int data_len);
 
